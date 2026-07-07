@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ServiRoute</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+// Firebase init — runs before anything else
+firebase.initializeApp({
+  apiKey:"AIzaSyDSIcTiBswVGF2oCSzUocAPEN3qi_muYls",
+  authDomain:"serviroute-3ec0d.firebaseapp.com",
+  projectId:"serviroute-3ec0d",
+  storageBucket:"serviroute-3ec0d.firebasestorage.app",
+  messagingSenderId:"203389465925",
+  appId:"1:203389465925:web:31658625175d7a5ac53a2c"
+});
+var db = firebase.firestore();
+var auth = firebase.auth();
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+:root{--bg:#0f1117;--s:#181c27;--s2:#1f2437;--b:#2a3045;--a:#3d7eff;--ad:#1e3a7a;--g:#22c55e;--gd:#14532d;--y:#f59e0b;--yd:#451a03;--r:#ef4444;--rd:#450a0a;--t:#e8eaf0;--td:#7c8499;--tm:#4a5168;--rad:10px;--mono:'DM Mono',monospace;--sans:'DM Sans',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--t);min-height:100vh;font-size:14px}
+
+/* Shared */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:var(--rad);font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap}
+.btn-p{background:var(--a);color:#fff}.btn-p:hover{background:#5590ff}
+.btn-s{background:var(--s2);color:var(--t);border:1px solid var(--b)}.btn-s:hover{border-color:var(--a);color:var(--a)}
+.btn-g{background:transparent;color:var(--td);padding:6px 10px}.btn-g:hover{color:var(--t)}
+.btn-ok{background:var(--gd);color:var(--g);border:1px solid var(--g)}
+.btn-full{width:100%;justify-content:center;padding:12px;font-size:14px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+label{display:block;font-size:11px;font-weight:600;color:var(--td);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--b);border-radius:var(--rad);color:var(--t);font-family:var(--sans);font-size:14px;padding:10px 14px;outline:none;margin-bottom:16px}
+input:focus,select:focus,textarea:focus{border-color:var(--a)}
+.card{background:var(--s);border:1px solid var(--b);border-radius:var(--rad);padding:20px}
+.err-box{background:var(--rd);border:1px solid var(--r);color:var(--r);border-radius:var(--rad);padding:10px 14px;font-size:13px;margin-bottom:16px}
+.info-box{background:var(--ad);border:1px solid var(--a);color:#93b4ff;border-radius:var(--rad);padding:10px 14px;font-size:13px;margin-bottom:16px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.sec-t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--td);margin-bottom:14px}
+.badge{display:inline-flex;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.b-draft{background:var(--s2);color:var(--td)}.b-dispatched{background:var(--ad);color:var(--a)}
+.b-active{background:var(--yd);color:var(--y)}.b-done{background:var(--gd);color:var(--g)}
+.b-skip{background:var(--rd);color:var(--r)}.b-pending{background:var(--s2);color:var(--td)}
+
+/* Login */
+#v-login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 60% 30%,#1a2a5e 0%,var(--bg) 60%)}
+.login-box{background:var(--s);border:1px solid var(--b);border-radius:16px;padding:48px 40px;width:400px;max-width:95vw}
+.logo{font-size:22px;font-weight:700;color:var(--a);letter-spacing:-.5px;margin-bottom:4px}
+.logo-sub{color:var(--td);font-size:13px;margin-bottom:32px}
+
+/* App shell */
+#v-app{display:none;min-height:100vh}
+.side{position:fixed;left:0;top:0;bottom:0;width:220px;background:var(--s);border-right:1px solid var(--b);display:flex;flex-direction:column;z-index:100}
+.side-logo{padding:20px;font-size:18px;font-weight:700;color:var(--a);border-bottom:1px solid var(--b)}
+.side-logo small{display:block;font-size:11px;color:var(--td);font-weight:400;margin-top:2px}
+.side-nav{flex:1;padding:12px 0;overflow-y:auto}
+.nav-i{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--td);cursor:pointer;font-size:13px;font-weight:500;border-left:3px solid transparent}
+.nav-i:hover{color:var(--t);background:var(--s2)}
+.nav-i.on{color:var(--a);border-left-color:var(--a);background:var(--ad)}
+.side-bot{padding:16px 20px;border-top:1px solid var(--b)}
+.side-user{font-size:12px;color:var(--td);margin-bottom:10px}
+.side-user strong{display:block;color:var(--t);font-size:13px}
+.main{margin-left:220px;padding:28px;min-height:100vh}
+.pg{display:none}.pg.on{display:block}
+.pg-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.pg-t{font-size:20px;font-weight:700;letter-spacing:-.3px}
+.pg-st{color:var(--td);font-size:13px;margin-top:2px}
+.flex-g{display:flex;gap:10px}
+
+/* Stats */
+.stat{background:var(--s);border:1px solid var(--b);border-radius:var(--rad);padding:20px}
+.stat-l{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--td);margin-bottom:8px}
+.stat-v{font-size:28px;font-weight:700;letter-spacing:-.5px}
+.stat-s{font-size:12px;color:var(--td);margin-top:4px}
+
+/* Route card */
+.rc{background:var(--s);border:1px solid var(--b);border-radius:var(--rad);padding:16px 20px;margin-bottom:12px;cursor:pointer;transition:border-color .15s}
+.rc:hover{border-color:var(--a)}.rc.sel{border-color:var(--a);background:#131929}
+.crew-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;display:inline-block}
+.pbar{width:100%;height:4px;background:var(--s2);border-radius:2px;overflow:hidden;margin-top:12px}
+.pfill{height:100%;background:var(--g);border-radius:2px;transition:width .3s}
+.rmeta{display:flex;gap:16px;margin-top:10px;font-size:12px;color:var(--td)}
+.rmeta strong{color:var(--t)}
+
+/* Job item */
+.ji{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--b)}
+.ji:last-child{border-bottom:none}
+.jseq{width:24px;height:24px;border-radius:6px;background:var(--s2);color:var(--td);font-family:var(--mono);font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.jseq.ok{background:var(--gd);color:var(--g)}
+.jn{font-size:13px;font-weight:600}.jd{font-size:12px;color:var(--td);margin-top:2px}
+.jm{font-size:11px;color:var(--tm);margin-top:4px;font-family:var(--mono)}
+
+/* Modal */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
+.mo.open{display:flex}
+.md{background:var(--s);border:1px solid var(--b);border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto}
+.md-h{padding:20px 24px;border-bottom:1px solid var(--b);display:flex;align-items:center;justify-content:space-between}
+.md-t{font-size:16px;font-weight:700}
+.md-b{padding:24px}.md-f{padding:16px 24px;border-top:1px solid var(--b);display:flex;justify-content:flex-end;gap:10px}
+
+/* Toggle */
+.trow{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--b)}
+.trow:last-child{border-bottom:none}
+.tlabel{font-size:13px;font-weight:500}.tdesc{font-size:12px;color:var(--td);margin-top:2px}
+.tgl{position:relative;width:40px;height:22px;flex-shrink:0}
+.tgl input{opacity:0;width:0;height:0}
+.tgl-s{position:absolute;inset:0;background:var(--b);border-radius:11px;cursor:pointer;transition:background .2s}
+.tgl-s::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:white;border-radius:50%;transition:transform .2s}
+.tgl input:checked+.tgl-s{background:var(--a)}
+.tgl input:checked+.tgl-s::before{transform:translateX(18px)}
+
+/* Opt grid */
+.og{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.oc{border:2px solid var(--b);border-radius:var(--rad);padding:14px;cursor:pointer;transition:all .15s;background:var(--bg)}
+.oc:hover{border-color:var(--a)}.oc.sel{border-color:var(--a);background:var(--ad)}
+.oc-i{font-size:20px;margin-bottom:6px}.oc-t{font-size:13px;font-weight:600}.oc-d{font-size:11px;color:var(--td);margin-top:3px}
+
+/* Crew toggles */
+.ct{display:flex;flex-wrap:wrap;gap:8px}
+.ctb{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;border:1.5px solid var(--b);background:var(--s);color:var(--td);font-size:12px;font-weight:600;cursor:pointer}
+.ctb.on{color:var(--t);border-color:currentColor}
+
+/* Empty */
+.empty{text-align:center;padding:60px 20px;color:var(--td)}
+.empty-i{font-size:40px;margin-bottom:12px}
+.empty-t{font-size:15px;font-weight:600;color:var(--t);margin-bottom:6px}
+
+/* Toast */
+#toast{position:fixed;bottom:24px;right:24px;background:var(--s2);border:1px solid var(--b);border-radius:var(--rad);padding:12px 18px;font-size:13px;z-index:9999;opacity:0;transform:translateY(10px);transition:all .25s;pointer-events:none}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast.ok{border-color:var(--g);color:var(--g)}
+#toast.bad{border-color:var(--r);color:var(--r)}
+
+/* Table */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--td);padding:10px 14px;border-bottom:1px solid var(--b)}
+td{padding:12px 14px;font-size:13px;border-bottom:1px solid var(--b)}
+tr:last-child td{border-bottom:none}tr:hover td{background:var(--s2)}
+.csw{width:24px;height:24px;border-radius:50%;display:inline-block;border:2px solid var(--b)}
+
+.drag-h{cursor:grab;color:var(--tm);font-size:16px;padding:2px;flex-shrink:0}
+.drag-h:active{cursor:grabbing}
+.divider{border:none;border-top:1px solid var(--b);margin:20px 0}
+
+@media(max-width:768px){
+  .side{display:none}
+  .main{margin-left:0}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="v-login">
+  <div class="login-box">
+    <div class="logo">🗺 ServiRoute</div>
+    <div class="logo-sub">Route management dispatcher</div>
+    <div id="auth-msg" style="display:none"></div>
+    <div id="auth-form">
+      <div id="f-login">
+        <label>Email</label>
+        <input type="email" id="i-email" placeholder="you@company.com"/>
+        <label>Password</label>
+        <input type="password" id="i-pass" placeholder="••••••••"/>
+        <button class="btn btn-p btn-full" id="btn-login">Sign In</button>
+        <p style="text-align:center;margin-top:16px;font-size:12px;color:var(--td)">
+          New? <a href="#" id="link-reg" style="color:var(--a)">Register your company</a>
+        </p>
+      </div>
+      <div id="f-register" style="display:none">
+        <label>Company Name</label>
+        <input type="text" id="i-company" value="Cornerstone Landscape"/>
+        <label>Your Full Name</label>
+        <input type="text" id="i-name" value="Edd Anlacan"/>
+        <label>Email</label>
+        <input type="email" id="i-reg-email" value="edd@anlacan.co"/>
+        <label>Password (6+ chars)</label>
+        <input type="password" id="i-reg-pass"/>
+        <div class="row2">
+          <div><label>Dispatch Lat</label><input type="number" id="i-lat" value="28.1518" step="0.0001"/></div>
+          <div><label>Dispatch Lng</label><input type="number" id="i-lng" value="-82.3743" step="0.0001"/></div>
+        </div>
+        <button class="btn btn-p btn-full" id="btn-reg">Create Company & Sign In</button>
+        <p style="text-align:center;margin-top:16px;font-size:12px;color:var(--td)">
+          Already registered? <a href="#" id="link-login" style="color:var(--a)">Sign in</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="v-app">
+  <div class="side">
+    <div class="side-logo">🗺 ServiRoute<small id="s-co">—</small></div>
+    <nav class="side-nav" id="side-nav"></nav>
+    <div class="side-bot">
+      <div class="side-user"><strong id="s-name">—</strong><span id="s-role">—</span></div>
+      <button class="btn btn-s btn-full" id="btn-out">Sign out</button>
+    </div>
+  </div>
+  <div class="main" id="main-content"></div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ═══ APP LOGIC ═══ -->
+<script>
+// ── State ────────────────────────────────────────────
+var CU = null;   // current firebase user
+var CP = null;   // current profile (firestore)
+var CC = null;   // current company (firestore)
+var crew = [];
+var locs = [];
+var routes = [];
+var selRoute = null;
+var selJobs = [];
+var unsubs = [];
+var dragI = null;
+
+// ── Helpers ──────────────────────────────────────────
+function $(id){ return document.getElementById(id); }
+function show(el){ el.style.display = ''; }
+function hide(el){ el.style.display = 'none'; }
+
+var _tt;
+function toast(msg, ok){
+  var t = $('toast');
+  t.textContent = msg;
+  t.className = 'show ' + (ok ? 'ok' : 'bad');
+  clearTimeout(_tt);
+  _tt = setTimeout(function(){ t.className = ''; }, 3500);
+}
+
+function msg(txt, isErr){
+  var el = $('auth-msg');
+  el.textContent = txt;
+  el.className = isErr ? 'err-box' : 'info-box';
+  show(el);
+}
+
+function hideMsg(){ hide($('auth-msg')); }
+
+function badge(s){
+  var m = {draft:'b-draft',dispatched:'b-dispatched',in_progress:'b-active',completed:'b-done',pending:'b-pending',skipped:'b-skip'};
+  return '<span class="badge '+(m[s]||'b-draft')+'">'+(s||'draft').replace('_',' ')+'</span>';
+}
+
+function fmtMins(m){
+  if(!m) return '—';
+  if(m < 60) return m + 'min';
+  return Math.floor(m/60) + 'h ' + (m%60) + 'm';
+}
+
+function fmtDate(iso){
+  return new Date(iso+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+}
+
+function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ── Route optimizer ──────────────────────────────────
+function hav(a1,n1,a2,n2){
+  var R=3959,dA=(a2-a1)*Math.PI/180,dN=(n2-n1)*Math.PI/180;
+  var x=Math.sin(dA/2)**2+Math.cos(a1*Math.PI/180)*Math.cos(a2*Math.PI/180)*Math.sin(dN/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));
+}
+
+function routeDist(dp,stops){
+  if(!stops.length) return 0;
+  var t=hav(dp.lat,dp.lng,stops[0].lat,stops[0].lng);
+  for(var i=0;i<stops.length-1;i++) t+=hav(stops[i].lat,stops[i].lng,stops[i+1].lat,stops[i+1].lng);
+  t+=hav(stops[stops.length-1].lat,stops[stops.length-1].lng,dp.lat,dp.lng);
+  return t;
+}
+
+function optDist(dp,stops){
+  if(stops.length<=1) return stops.map(function(s,i){s.sequence=i+1;return s;});
+  var pts=[dp].concat(stops.map(function(s){return{lat:s.coordinates?s.coordinates.lat:0,lng:s.coordinates?s.coordinates.lng:0};}));
+  var n=pts.length;
+  var dm=[];for(var i=0;i<n;i++){dm[i]=[];for(var j=0;j<n;j++)dm[i][j]=i===j?0:hav(pts[i].lat,pts[i].lng,pts[j].lat,pts[j].lng);}
+  var vis={0:true};var order=[];var cur=0;
+  while(order.length<n-1){
+    var best=-1,bd=Infinity;
+    for(var i=0;i<n;i++){if(!vis[i]&&dm[cur][i]<bd){best=i;bd=dm[cur][i];}}
+    if(best===-1)break;vis[best]=true;order.push(best);cur=best;
+  }
+  return order.map(function(idx,seq){var s=stops[idx-1];s.sequence=seq+1;return s;});
+}
+
+function optTime(dp,stops){
+  if(stops.length<=1) return stops.map(function(s,i){s.sequence=i+1;return s;});
+  var pts=[dp].concat(stops.map(function(s){return{lat:s.coordinates?s.coordinates.lat:0,lng:s.coordinates?s.coordinates.lng:0};}));
+  var n=pts.length;
+  var tm=[];for(var i=0;i<n;i++){tm[i]=[];for(var j=0;j<n;j++){if(i===j){tm[i][j]=0;continue;}var d=hav(pts[i].lat,pts[i].lng,pts[j].lat,pts[j].lng);tm[i][j]=(d/30)*60+(j>0?(stops[j-1].estimatedDuration||30):0);}}
+  var vis={0:true};var order=[];var cur=0;
+  while(order.length<n-1){
+    var best=-1,bd=Infinity;
+    for(var i=0;i<n;i++){if(!vis[i]&&tm[cur][i]<bd){best=i;bd=tm[cur][i];}}
+    if(best===-1)break;vis[best]=true;order.push(best);cur=best;
+  }
+  return order.map(function(idx,seq){var s=stops[idx-1];s.sequence=seq+1;return s;});
+}
+
+function calcStats(dp,stops){
+  var pts=stops.map(function(s){return{lat:s.coordinates?s.coordinates.lat:0,lng:s.coordinates?s.coordinates.lng:0};});
+  var dist=routeDist(dp,pts);
+  var drive=(dist/30)*60;
+  var svc=stops.reduce(function(a,s){return a+(s.estimatedDuration||30);},0);
+  return{distance:Math.round(dist*10)/10,driveTime:Math.round(drive),serviceTime:svc,totalTime:Math.round(drive+svc)};
+}
+
+// ── Auth ─────────────────────────────────────────────
+auth.onAuthStateChanged(function(user){
+  if(user){
+    CU = user;
+    loadProfile(user.uid);
+  } else {
+    CU=null;CP=null;CC=null;
+    unsubs.forEach(function(u){u();});
+    unsubs=[];
+    $('v-login').style.display='flex';
+    hide($('v-app'));
+  }
+});
+
+// Toggle forms
+$('link-reg').onclick=function(e){e.preventDefault();hideMsg();hide($('f-login'));show($('f-register'));};
+$('link-login').onclick=function(e){e.preventDefault();hideMsg();show($('f-login'));hide($('f-register'));};
+
+// Login
+$('btn-login').onclick = function(){
+  hideMsg();
+  var email=$('i-email').value.trim();
+  var pass=$('i-pass').value;
+  if(!email||!pass){msg('Enter email and password.',true);return;}
+  this.textContent='Signing in…';this.disabled=true;
+  var self=this;
+  auth.signInWithEmailAndPassword(email,pass)
+  .catch(function(e){
+    var m=e.message;
+    if(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password'||e.code==='auth/user-not-found') m='Incorrect email or password.';
+    else if(e.code==='auth/too-many-requests') m='Too many attempts. Wait a few minutes.';
+    msg(m,true);
+  })
+  .finally(function(){self.textContent='Sign In';self.disabled=false;});
+};
+
+// Enter key on login
+$('i-pass').onkeydown=function(e){if(e.key==='Enter')$('btn-login').click();};
+
+// Register
+$('btn-reg').onclick = function(){
+  hideMsg();
+  var company=$('i-company').value.trim();
+  var name=$('i-name').value.trim();
+  var email=$('i-reg-email').value.trim();
+  var pass=$('i-reg-pass').value;
+  var lat=parseFloat($('i-lat').value)||0;
+  var lng=parseFloat($('i-lng').value)||0;
+  if(!company||!name||!email||!pass){msg('All fields required.',true);return;}
+  if(pass.length<6){msg('Password needs 6+ characters.',true);return;}
+
+  this.textContent='Creating…';this.disabled=true;
+  var self=this;
+
+  // Try create user, or sign in if exists
+  var p = auth.createUserWithEmailAndPassword(email,pass)
+    .catch(function(e){
+      if(e.code==='auth/email-already-in-use')return auth.signInWithEmailAndPassword(email,pass);
+      throw e;
+    });
+
+  p.then(function(cred){
+    var uid=cred.user.uid;
+    // Check if profile already exists
+    return db.collection('users').doc(uid).get().then(function(doc){
+      if(doc.exists) return; // Already set up, just continue to onAuthStateChanged
+
+      // Create company
+      return db.collection('companies').add({
+        name:company,slug:company.toLowerCase().replace(/\s+/g,'-'),
+        dispatchLocation:{lat:lat,lng:lng,address:''},timezone:'America/New_York',
+        createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+      }).then(function(compRef){
+        // Create user profile
+        return db.collection('users').doc(uid).set({
+          companyId:compRef.id,email:email,fullName:name,phone:'',role:'owner',active:true,crewId:null,
+          permissions:{canViewAllCrews:true,canEditOwnRoutes:true,canManageUsers:true},
+          createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+        }).then(function(){
+          return db.collection('proofSettings').doc(compRef.id).set({
+            requirePhotoBefore:false,requirePhotoAfter:true,
+            requireSignature:false,requireNotes:true,requireVoiceRecording:false
+          });
+        });
+      });
+    });
+  })
+  .catch(function(e){
+    var m=e.message;
+    if(e.code==='auth/invalid-email') m='Invalid email address.';
+    else if(e.code==='auth/weak-password') m='Password needs 6+ characters.';
+    else if(e.code==='auth/operation-not-allowed') m='Enable Email/Password in Firebase Console → Authentication → Sign-in method.';
+    msg(m,true);
+  })
+  .finally(function(){self.textContent='Create Company & Sign In';self.disabled=false;});
+};
+
+// Load profile — creates missing Firestore data if needed
+function loadProfile(uid){
+  db.collection('users').doc(uid).get().then(function(doc){
+    if(!doc.exists){
+      // User in Auth but no Firestore profile — redirect to register
+      msg('Account found but setup incomplete. Please register your company below.',true);
+      hide($('f-login'));
+      show($('f-register'));
+      $('i-reg-email').value = auth.currentUser.email || '';
+      auth.signOut();
+      return;
+    }
+    CP={id:doc.id};
+    var d=doc.data();
+    for(var k in d) CP[k]=d[k];
+
+    return db.collection('companies').doc(CP.companyId).get();
+  }).then(function(compDoc){
+    if(!compDoc) return;
+    if(!compDoc.exists){toast('Company not found.',false);auth.signOut();return;}
+    CC={id:compDoc.id};
+    var d=compDoc.data();
+    for(var k in d) CC[k]=d[k];
+
+    initApp();
+  }).catch(function(e){
+    toast('Error: '+e.message,false);
+    auth.signOut();
+  });
+}
+
+// ── App Init ─────────────────────────────────────────
+function initApp(){
+  hide($('v-login'));
+  show($('v-app'));
+  $('s-co').textContent=CC.name||'';
+  $('s-name').textContent=CP.fullName||'';
+  $('s-role').textContent=CP.role||'';
+
+  // Build sidebar
+  var pages=[
+    {id:'dashboard',icon:'📊',label:'Dashboard'},
+    {id:'routes',icon:'🗓',label:'Routes'},
+    {id:'crew',icon:'👥',label:'Crew'},
+    {id:'locations',icon:'📍',label:'Locations'},
+    {id:'analytics',icon:'📈',label:'Analytics'},
+    {id:'settings',icon:'⚙️',label:'Settings'}
+  ];
+  $('side-nav').innerHTML=pages.map(function(p){
+    return '<div class="nav-i'+(p.id==='dashboard'?' on':'')+'" data-pg="'+p.id+'"><span>'+p.icon+'</span> '+p.label+'</div>';
+  }).join('');
+
+  // Nav click
+  $('side-nav').onclick=function(e){
+    var t=e.target.closest('.nav-i');
+    if(!t)return;
+    document.querySelectorAll('.nav-i').forEach(function(n){n.classList.remove('on');});
+    t.classList.add('on');
+    showPage(t.getAttribute('data-pg'));
+  };
+
+  // Sign out
+  $('btn-out').onclick=function(){
+    unsubs.forEach(function(u){u();});
+    auth.signOut();
+  };
+
+  // Load data
+  loadCrew();
+  loadLocs();
+  showPage('dashboard');
+}
+
+// ── Pages ────────────────────────────────────────────
+function showPage(name){
+  var mc=$('main-content');
+  if(name==='dashboard') renderDashboard(mc);
+  else if(name==='routes') renderRoutes(mc);
+  else if(name==='crew') renderCrew(mc);
+  else if(name==='locations') renderLocations(mc);
+  else if(name==='analytics') renderAnalytics(mc);
+  else if(name==='settings') renderSettings(mc);
+}
+
+// ── Dashboard ────────────────────────────────────────
+function renderDashboard(mc){
+  var today=new Date().toISOString().slice(0,10);
+  mc.innerHTML='<div class="pg on">'+
+    '<div class="pg-h"><div><div class="pg-t">Dashboard</div><div class="pg-st">'+fmtDate(today)+'</div></div>'+
+    '<div class="flex-g"><input type="date" id="dash-dt" value="'+today+'" style="margin-bottom:0;width:auto"/>'+
+    '<button class="btn btn-p" onclick="showPage(\'routes\')">+ New Route</button></div></div>'+
+    '<div class="row3" style="margin-bottom:24px">'+
+    '<div class="stat"><div class="stat-l">Routes</div><div class="stat-v" id="d-routes">—</div></div>'+
+    '<div class="stat"><div class="stat-l">Completion</div><div class="stat-v" id="d-pct">—</div><div class="stat-s" id="d-jobs">—</div></div>'+
+    '<div class="stat"><div class="stat-l">Active Crews</div><div class="stat-v" id="d-crews">—</div></div></div>'+
+    '<div class="card"><div class="sec-t">Routes Overview</div><div id="d-board"><p style="color:var(--td)">Loading…</p></div></div></div>';
+
+  loadDashboard(today);
+  $('dash-dt').onchange=function(){loadDashboard(this.value);};
+}
+
+function loadDashboard(date){
+  db.collection('routes').where('companyId','==',CC.id).where('routeDate','==',date).get()
+  .then(function(snap){
+    routes=snap.docs.map(function(d){var x=d.data();x.id=d.id;return x;});
+    var total=routes.reduce(function(a,r){return a+(r.jobCount||0);},0);
+    var done=routes.reduce(function(a,r){return a+(r.completedJobCount||0);},0);
+    var pct=total?Math.round(done/total*100):0;
+    if($('d-routes'))$('d-routes').textContent=routes.length;
+    if($('d-pct'))$('d-pct').textContent=pct+'%';
+    if($('d-jobs'))$('d-jobs').textContent=done+' of '+total+' jobs';
+    if($('d-crews')){
+      var s={};routes.forEach(function(r){s[r.crewId]=1;});
+      $('d-crews').textContent=Object.keys(s).length;
+    }
+    var el=$('d-board');
+    if(!el)return;
+    if(!routes.length){el.innerHTML='<div class="empty"><div class="empty-i">🗓</div><div class="empty-t">No routes for '+date+'</div></div>';return;}
+    el.innerHTML='<div class="row2">'+routes.map(function(r){
+      var c=crew.find(function(x){return x.id===r.crewId;});
+      var p=r.jobCount?Math.round((r.completedJobCount||0)/r.jobCount*100):0;
+      return '<div class="rc" onclick="document.querySelector(\'[data-pg=routes]\').click();setTimeout(function(){selAndShow(\''+r.id+'\');},100)">'+
+        '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div style="display:flex;align-items:center;gap:7px;font-weight:600"><span class="crew-dot" style="background:'+(c?c.color:'#7c8499')+'"></span>'+esc(r.routeName)+'</div>'+badge(r.status)+'</div>'+
+        '<div style="font-size:12px;color:var(--td)">'+(c?c.name:'—')+' · '+(r.jobCount||0)+' stops</div>'+
+        '<div class="pbar"><div class="pfill" style="width:'+p+'%"></div></div>'+
+        '<div class="rmeta"><div><strong>'+(r.completedJobCount||0)+'</strong>/'+( r.jobCount||0)+' done</div><div><strong>'+p+'%</strong></div></div></div>';
+    }).join('')+'</div>';
+  });
+}
+
+// ── Routes ───────────────────────────────────────────
+function renderRoutes(mc){
+  var today=new Date().toISOString().slice(0,10);
+  mc.innerHTML='<div class="pg on">'+
+    '<div class="pg-h"><div><div class="pg-t">Routes</div><div class="pg-st">Plan, optimize, and dispatch</div></div>'+
+    '<div class="flex-g"><input type="date" id="rt-dt" value="'+today+'" style="margin-bottom:0;width:auto"/>'+
+    '<button class="btn btn-p" id="btn-new-route">+ New Route</button></div></div>'+
+    '<div class="row2" style="gap:24px"><div id="rt-list"><p style="color:var(--td)">Loading…</p></div>'+
+    '<div id="rt-detail"><div class="card"><div class="empty"><div class="empty-i">🗓</div><div class="empty-t">Select a route</div></div></div></div></div></div>';
+
+  loadRouteList(today);
+  $('rt-dt').onchange=function(){selRoute=null;loadRouteList(this.value);};
+  $('btn-new-route').onclick=function(){showNewRouteModal();};
+}
+
+function loadRouteList(date){
+  db.collection('routes').where('companyId','==',CC.id).where('routeDate','==',date).get()
+  .then(function(snap){
+    routes=snap.docs.map(function(d){var x=d.data();x.id=d.id;return x;});
+    var el=$('rt-list');
+    if(!el)return;
+    if(!routes.length){el.innerHTML='<div class="empty"><div class="empty-i">🗓</div><div class="empty-t">No routes for '+date+'</div><p style="color:var(--td)">Click + New Route above</p></div>';return;}
+    el.innerHTML=routes.map(function(r){
+      var c=crew.find(function(x){return x.id===r.crewId;});
+      var p=r.jobCount?Math.round((r.completedJobCount||0)/r.jobCount*100):0;
+      return '<div class="rc'+(selRoute===r.id?' sel':'')+'" onclick="selAndShow(\''+r.id+'\')">'+
+        '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div style="display:flex;align-items:center;gap:7px;font-weight:600"><span class="crew-dot" style="background:'+(c?c.color:'#7c8499')+'"></span>'+esc(r.routeName)+'</div>'+badge(r.status)+'</div>'+
+        '<div style="font-size:12px;color:var(--td)">'+(c?c.name:'Unassigned')+' · '+(r.optimizationMethod||'manual').replace('_',' ')+'</div>'+
+        '<div class="pbar"><div class="pfill" style="width:'+p+'%"></div></div>'+
+        '<div class="rmeta"><div>📍 <strong>'+(r.jobCount||0)+'</strong> stops</div><div>✅ <strong>'+(r.completedJobCount||0)+'</strong></div><div>⏱ <strong>'+fmtMins(r.totalEstimatedDuration)+'</strong></div></div></div>';
+    }).join('');
+  });
+}
+
+function selAndShow(id){
+  selRoute=id;
+  var date=$('rt-dt')?$('rt-dt').value:new Date().toISOString().slice(0,10);
+  loadRouteList(date);
+  loadRouteDetail(id);
+}
+
+function loadRouteDetail(id){
+  var panel=$('rt-detail');
+  if(!panel)return;
+  panel.innerHTML='<div class="card"><p style="color:var(--td)">Loading…</p></div>';
+
+  var route=routes.find(function(r){return r.id===id;});
+  if(!route){panel.innerHTML='<div class="card"><p>Route not found</p></div>';return;}
+
+  db.collection('jobs').where('routeId','==',id).orderBy('sequence','asc').get()
+  .then(function(snap){
+    selJobs=snap.docs.map(function(d){var x=d.data();x.id=d.id;return x;});
+    var c=crew.find(function(x){return x.id===route.crewId;});
+    var dp=CC.dispatchLocation||{lat:0,lng:0};
+    var stats=selJobs.length?calcStats(dp,selJobs):{distance:0,driveTime:0,serviceTime:0,totalTime:0};
+
+    panel.innerHTML='<div class="card">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
+      '<div><div style="font-size:15px;font-weight:700">'+esc(route.routeName)+'</div><div style="font-size:12px;color:var(--td)">'+(c?c.name:'—')+' · '+route.routeDate+'</div></div>'+
+      '<div class="flex-g">'+badge(route.status)+
+      (route.status==='draft'?'<button class="btn btn-ok" onclick="dispatchRoute(\''+id+'\')">▶ Dispatch</button>':'')+
+      '</div></div>'+
+
+      '<div style="display:flex;gap:12px;margin-bottom:16px;padding:12px;background:var(--bg);border-radius:var(--rad)">'+
+      '<div style="flex:1;text-align:center"><div style="font-family:var(--mono);font-size:18px;font-weight:700">'+stats.distance+'</div><div style="font-size:11px;color:var(--td)">miles</div></div>'+
+      '<div style="flex:1;text-align:center;border-left:1px solid var(--b)"><div style="font-family:var(--mono);font-size:18px;font-weight:700">'+fmtMins(stats.driveTime)+'</div><div style="font-size:11px;color:var(--td)">drive</div></div>'+
+      '<div style="flex:1;text-align:center;border-left:1px solid var(--b)"><div style="font-family:var(--mono);font-size:18px;font-weight:700">'+fmtMins(stats.totalTime)+'</div><div style="font-size:11px;color:var(--td)">total</div></div></div>'+
+
+      '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">'+
+      '<button class="btn btn-s" style="font-size:12px" onclick="reopt(\''+id+'\',\'dist\')">📏 Optimize Distance</button>'+
+      '<button class="btn btn-s" style="font-size:12px" onclick="reopt(\''+id+'\',\'time\')">⏱ Optimize Time</button>'+
+      '<button class="btn btn-p" style="font-size:12px" onclick="showAddJobModal(\''+id+'\')">+ Add Stop</button>'+
+      (selJobs.length>=2?'<button class="btn btn-s" style="font-size:12px" onclick="splitR(\''+id+'\')">✂️ Split</button>':'')+
+      '</div>'+
+
+      '<div class="sec-t">Stops ('+selJobs.length+')</div>'+
+      (selJobs.length===0
+        ?'<div class="empty" style="padding:30px"><div class="empty-i">📍</div><div class="empty-t">No stops yet</div></div>'
+        :selJobs.map(function(j,i){
+          return '<div class="ji" draggable="true" ondragstart="dragS(event,'+i+')" ondragover="dragO(event)" ondrop="dragD(event,'+i+',\''+id+'\')">'+
+            '<span class="drag-h">⠿</span>'+
+            '<div class="jseq'+(j.status==='completed'?' ok':'')+'">'+j.sequence+'</div>'+
+            '<div style="flex:1"><div class="jn">'+esc(j.locationName||'Unknown')+'</div><div class="jd">'+esc(j.description||j.jobType||'')+'</div><div class="jm">~'+(j.estimatedDuration||30)+'min · '+(j.priority||'normal')+'</div></div>'+
+            '<div class="flex-g">'+badge(j.status)+'<button class="btn btn-g" style="color:var(--r)" onclick="removeJob(\''+j.id+'\',\''+id+'\')">✕</button></div></div>';
+        }).join(''))+
+      '</div>';
+  }).catch(function(e){
+    panel.innerHTML='<div class="card"><p style="color:var(--r)">Error: '+e.message+'</p></div>';
+  });
+}
+
+// Route actions
+function dispatchRoute(id){
+  db.collection('routes').doc(id).update({status:'dispatched',dispatchedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()})
+  .then(function(){toast('Route dispatched!',true);selAndShow(id);});
+}
+
+function reopt(id,method){
+  if(!selJobs.length){toast('No stops',false);return;}
+  var dp=CC.dispatchLocation||{lat:0,lng:0};
+  var result=method==='dist'?optDist(dp,selJobs):optTime(dp,selJobs);
+  var batch=db.batch();
+  result.forEach(function(j){batch.update(db.collection('jobs').doc(j.id),{sequence:j.sequence,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});});
+  batch.commit().then(function(){toast('Optimized!',true);selAndShow(id);});
+}
+
+function splitR(id){
+  if(selJobs.length<2)return;
+  var half=Math.floor(selJobs.length/2);
+  var second=selJobs.slice(half);
+  var route=routes.find(function(r){return r.id===id;});
+  db.collection('routes').add({
+    companyId:CC.id,routeDate:route.routeDate,routeName:route.routeName+' (Split)',
+    description:'Split from '+route.routeName,crewId:route.crewId,status:'draft',
+    jobCount:second.length,completedJobCount:0,optimizationMethod:'manual',
+    createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  }).then(function(ref){
+    var batch=db.batch();
+    second.forEach(function(j,i){batch.update(db.collection('jobs').doc(j.id),{routeId:ref.id,sequence:i+1,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});});
+    batch.update(db.collection('routes').doc(id),{jobCount:half,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    return batch.commit();
+  }).then(function(){toast('Route split!',true);selAndShow(id);var dt=$('rt-dt');if(dt)loadRouteList(dt.value);});
+}
+
+function removeJob(jobId,routeId){
+  if(!confirm('Remove this stop?'))return;
+  db.collection('jobs').doc(jobId).delete().then(function(){
+    return db.collection('routes').doc(routeId).get();
+  }).then(function(doc){
+    var cnt=Math.max(0,(doc.data().jobCount||1)-1);
+    return db.collection('routes').doc(routeId).update({jobCount:cnt,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+  }).then(function(){toast('Removed',true);selAndShow(routeId);var dt=$('rt-dt');if(dt)loadRouteList(dt.value);});
+}
+
+// Drag & drop
+function dragS(e,i){dragI=i;e.dataTransfer.effectAllowed='move';}
+function dragO(e){e.preventDefault();}
+function dragD(e,toI,routeId){
+  e.preventDefault();
+  if(dragI===null||dragI===toI)return;
+  var arr=selJobs.slice();
+  var moved=arr.splice(dragI,1)[0];
+  arr.splice(toI,0,moved);
+  var batch=db.batch();
+  arr.forEach(function(j,i){batch.update(db.collection('jobs').doc(j.id),{sequence:i+1,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});});
+  batch.commit().then(function(){dragI=null;toast('Reordered',true);selAndShow(routeId);});
+}
+
+// ── New Route Modal ──────────────────────────────────
+var _optMethod='manual';
+
+function showNewRouteModal(){
+  var today=new Date().toISOString().slice(0,10);
+  var crewOpts=crew.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+(c.code?' ('+c.code+')':'')+'</option>';}).join('');
+
+  var html='<div class="mo open" id="modal-nr" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
+    '<div class="md"><div class="md-h"><div class="md-t">Create Route</div><button class="btn btn-g" onclick="$(\'modal-nr\').classList.remove(\'open\')">✕</button></div>'+
+    '<div class="md-b">'+
+    '<div class="row2"><div><label>Route Name</label><input type="text" id="nr-name" placeholder="Monday - North Zone"/></div>'+
+    '<div><label>Date</label><input type="date" id="nr-date" value="'+today+'"/></div></div>'+
+    '<label>Assign Crew</label><select id="nr-crew"><option value="">Select crew…</option>'+crewOpts+'</select>'+
+    '<label>Description</label><textarea id="nr-desc" rows="2" style="resize:none;margin-bottom:16px" placeholder="Optional notes"></textarea>'+
+    '<hr class="divider"/><div class="sec-t">Optimization</div>'+
+    '<div class="og">'+
+    '<div class="oc sel" onclick="pickOpt(this,\'manual\')" data-o="manual"><div class="oc-i">✋</div><div class="oc-t">Manual</div><div class="oc-d">You set the order</div></div>'+
+    '<div class="oc" onclick="pickOpt(this,\'smart_distance\')" data-o="smart_distance"><div class="oc-i">📏</div><div class="oc-t">Least Distance</div><div class="oc-d">Minimize miles</div></div>'+
+    '<div class="oc" onclick="pickOpt(this,\'smart_time\')" data-o="smart_time"><div class="oc-i">⏱</div><div class="oc-t">Fastest Time</div><div class="oc-d">Drive + service</div></div>'+
+    '<div class="oc" onclick="pickOpt(this,\'smart_balanced\')" data-o="smart_balanced"><div class="oc-i">⚖️</div><div class="oc-t">Balanced</div><div class="oc-d">Equal per crew</div></div>'+
+    '</div></div>'+
+    '<div class="md-f"><button class="btn btn-g" onclick="$(\'modal-nr\').classList.remove(\'open\')">Cancel</button>'+
+    '<button class="btn btn-p" onclick="createRoute()">Create Route</button></div></div></div>';
+
+  document.body.insertAdjacentHTML('beforeend',html);
+  _optMethod='manual';
+}
+
+function pickOpt(el,val){
+  _optMethod=val;
+  el.parentElement.querySelectorAll('.oc').forEach(function(c){c.classList.remove('sel');});
+  el.classList.add('sel');
+}
+
+function createRoute(){
+  var name=$('nr-name').value.trim();
+  var date=$('nr-date').value;
+  var crewId=$('nr-crew').value;
+  var desc=$('nr-desc').value;
+  if(!name||!date||!crewId){toast('Name, date and crew required',false);return;}
+
+  db.collection('routes').add({
+    companyId:CC.id,routeDate:date,routeName:name,description:desc,crewId:crewId,
+    status:'draft',optimizationMethod:_optMethod,
+    jobCount:0,completedJobCount:0,totalEstimatedDuration:0,totalEstimatedDistance:0,
+    createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  }).then(function(ref){
+    var m=$('modal-nr');if(m)m.remove();
+    toast('Route created!',true);
+    if($('rt-dt'))$('rt-dt').value=date;
+    loadRouteList(date);
+    selAndShow(ref.id);
+  }).catch(function(e){toast(e.message,false);});
+}
+
+// ── Add Job Modal ────────────────────────────────────
+var _addJobRoute=null;
+
+function showAddJobModal(routeId){
+  _addJobRoute=routeId;
+  var locOpts=locs.map(function(l){return '<option value="'+l.id+'">'+esc(l.name)+(l.clientName?' — '+l.clientName:'')+'</option>';}).join('');
+
+  var html='<div class="mo open" id="modal-aj" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
+    '<div class="md"><div class="md-h"><div class="md-t">Add Stop</div><button class="btn btn-g" onclick="$(\'modal-aj\').classList.remove(\'open\')">✕</button></div>'+
+    '<div class="md-b">'+
+    '<label>Location</label><select id="aj-loc"><option value="">Select…</option>'+locOpts+'</select>'+
+    '<div class="row2"><div><label>Type</label><select id="aj-type"><option value="maintenance">Maintenance</option><option value="service">Service</option><option value="inspection">Inspection</option><option value="install">Install</option><option value="other">Other</option></select></div>'+
+    '<div><label>Duration (min)</label><input type="number" id="aj-dur" value="30" min="5"/></div></div>'+
+    '<label>Description</label><textarea id="aj-desc" rows="2" style="resize:none;margin-bottom:16px" placeholder="Grass cut, trim hedges…"></textarea>'+
+    '<div class="row2"><div><label>Priority</label><select id="aj-pri"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option><option value="low">Low</option></select></div>'+
+    '<div><label>Time Window</label><input type="text" id="aj-tw" placeholder="08:00–17:00 (optional)"/></div></div>'+
+    '</div><div class="md-f"><button class="btn btn-g" onclick="$(\'modal-aj\').classList.remove(\'open\')">Cancel</button>'+
+    '<button class="btn btn-p" onclick="addJob()">Add Stop</button></div></div></div>';
+
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function addJob(){
+  var locId=$('aj-loc').value;
+  if(!locId){toast('Select a location',false);return;}
+  var loc=locs.find(function(l){return l.id===locId;});
+  var route=routes.find(function(r){return r.id===_addJobRoute;});
+  var seq=(route.jobCount||0)+1;
+
+  db.collection('jobs').add({
+    companyId:CC.id,routeId:_addJobRoute,routeDate:route.routeDate,crewId:route.crewId,
+    locationId:locId,locationName:loc?loc.name:'',locationAddress:loc?loc.address:'',
+    coordinates:loc?loc.coordinates:{lat:0,lng:0},
+    sequence:seq,jobType:$('aj-type').value,
+    description:$('aj-desc').value,
+    estimatedDuration:parseInt($('aj-dur').value)||30,
+    status:'pending',priority:$('aj-pri').value,
+    timeWindow:{start:null,end:null},
+    proofRequirements:{photoBefore:false,photoAfter:true,signature:false,notes:true,voiceRecording:false},
+    upsellItems:[],
+    createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  }).then(function(){
+    return db.collection('routes').doc(_addJobRoute).update({jobCount:seq,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+  }).then(function(){
+    var m=$('modal-aj');if(m)m.remove();
+    toast('Stop added!',true);
+    selAndShow(_addJobRoute);
+    var dt=$('rt-dt');if(dt)loadRouteList(dt.value);
+  }).catch(function(e){toast(e.message,false);});
+}
+
+// ── Crew ─────────────────────────────────────────────
+function loadCrew(){
+  var u=db.collection('crew').where('companyId','==',CC.id).where('active','==',true)
+    .onSnapshot(function(snap){
+      crew=snap.docs.map(function(d){var x=d.data();x.id=d.id;return x;});
+    });
+  unsubs.push(u);
+}
+
+function renderCrew(mc){
+  mc.innerHTML='<div class="pg on"><div class="pg-h"><div><div class="pg-t">Crew</div><div class="pg-st">Manage drivers and teams</div></div>'+
+    '<button class="btn btn-p" id="btn-add-crew">+ Add Crew</button></div>'+
+    '<div class="card" id="crew-tbl"></div></div>';
+
+  $('btn-add-crew').onclick=showAddCrewModal;
+  renderCrewTable();
+}
+
+function renderCrewTable(){
+  var el=$('crew-tbl');
+  if(!el)return;
+  if(!crew.length){el.innerHTML='<div class="empty"><div class="empty-i">👥</div><div class="empty-t">No crew yet</div><p style="color:var(--td)">Click + Add Crew above</p></div>';return;}
+  el.innerHTML='<table><thead><tr><th>Name</th><th>Code</th><th>Phone</th><th>Vehicle</th><th>Color</th></tr></thead><tbody>'+
+    crew.map(function(c){return '<tr><td><strong>'+esc(c.name)+'</strong></td><td style="font-family:var(--mono);font-size:12px">'+(c.code||'—')+'</td><td>'+(c.phone||'—')+'</td><td>'+(c.vehiclePlate||'—')+'</td><td><span class="csw" style="background:'+(c.color||'#7c8499')+'"></span></td></tr>';}).join('')+
+    '</tbody></table>';
+}
+
+function showAddCrewModal(){
+  var html='<div class="mo open" id="modal-ac" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
+    '<div class="md"><div class="md-h"><div class="md-t">Add Crew</div><button class="btn btn-g" onclick="$(\'modal-ac\').classList.remove(\'open\')">✕</button></div>'+
+    '<div class="md-b">'+
+    '<div class="row2"><div><label>Name</label><input type="text" id="ac-name"/></div><div><label>Code</label><input type="text" id="ac-code" placeholder="LM1"/></div></div>'+
+    '<div class="row2"><div><label>Phone</label><input type="text" id="ac-phone"/></div><div><label>Vehicle Plate</label><input type="text" id="ac-plate"/></div></div>'+
+    '<label>Color</label><input type="color" id="ac-color" value="#3d7eff" style="width:60px;height:40px;padding:2px;cursor:pointer;margin-bottom:16px"/>'+
+    '</div><div class="md-f"><button class="btn btn-g" onclick="$(\'modal-ac\').classList.remove(\'open\')">Cancel</button>'+
+    '<button class="btn btn-p" onclick="addCrew()">Add Crew</button></div></div></div>';
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function addCrew(){
+  var name=$('ac-name').value.trim();
+  if(!name){toast('Name required',false);return;}
+  db.collection('crew').add({
+    companyId:CC.id,name:name,code:$('ac-code').value.trim(),
+    phone:$('ac-phone').value.trim(),vehiclePlate:$('ac-plate').value.trim(),
+    color:$('ac-color').value,memberIds:[],territoryIds:[],active:true,
+    createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  }).then(function(){
+    var m=$('modal-ac');if(m)m.remove();
+    toast('Crew added!',true);
+    renderCrewTable();
+  }).catch(function(e){toast(e.message,false);});
+}
+
+// ── Locations ────────────────────────────────────────
+function loadLocs(){
+  var u=db.collection('locations').where('companyId','==',CC.id).where('active','==',true)
+    .onSnapshot(function(snap){
+      locs=snap.docs.map(function(d){var x=d.data();x.id=d.id;return x;});
+    });
+  unsubs.push(u);
+}
+
+function renderLocations(mc){
+  mc.innerHTML='<div class="pg on"><div class="pg-h"><div><div class="pg-t">Locations</div><div class="pg-st">Service properties</div></div>'+
+    '<button class="btn btn-p" id="btn-add-loc">+ Add Location</button></div>'+
+    '<div class="card" id="loc-tbl"></div></div>';
+  $('btn-add-loc').onclick=showAddLocModal;
+  renderLocTable();
+}
+
+function renderLocTable(){
+  var el=$('loc-tbl');
+  if(!el)return;
+  if(!locs.length){el.innerHTML='<div class="empty"><div class="empty-i">📍</div><div class="empty-t">No locations yet</div></div>';return;}
+  el.innerHTML='<table><thead><tr><th>Name</th><th>Client</th><th>Address</th><th>Duration</th></tr></thead><tbody>'+
+    locs.map(function(l){return '<tr><td><strong>'+esc(l.name)+'</strong></td><td>'+(l.clientName||'—')+'</td><td style="font-size:12px;color:var(--td)">'+(l.address||'—')+'</td><td>'+(l.defaultServiceDuration||30)+'min</td></tr>';}).join('')+
+    '</tbody></table>';
+}
+
+function showAddLocModal(){
+  var html='<div class="mo open" id="modal-al" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
+    '<div class="md"><div class="md-h"><div class="md-t">Add Location</div><button class="btn btn-g" onclick="$(\'modal-al\').classList.remove(\'open\')">✕</button></div>'+
+    '<div class="md-b">'+
+    '<div class="row2"><div><label>Name</label><input type="text" id="al-name"/></div><div><label>Client</label><input type="text" id="al-client"/></div></div>'+
+    '<label>Address</label><input type="text" id="al-addr" placeholder="1234 Main St, Tampa FL"/>'+
+    '<div class="row2"><div><label>Latitude</label><input type="number" id="al-lat" step="0.0001"/></div><div><label>Longitude</label><input type="number" id="al-lng" step="0.0001"/></div></div>'+
+    '<div class="row2"><div><label>Duration (min)</label><input type="number" id="al-dur" value="30"/></div><div><label>Client Phone</label><input type="text" id="al-phone"/></div></div>'+
+    '<label>Notes</label><textarea id="al-notes" rows="2" style="resize:none;margin-bottom:0" placeholder="Gate code, instructions…"></textarea>'+
+    '</div><div class="md-f"><button class="btn btn-g" onclick="$(\'modal-al\').classList.remove(\'open\')">Cancel</button>'+
+    '<button class="btn btn-p" onclick="addLoc()">Add Location</button></div></div></div>';
+  document.body.insertAdjacentHTML('beforeend',html);
+}
+
+function addLoc(){
+  var name=$('al-name').value.trim();
+  if(!name){toast('Name required',false);return;}
+  db.collection('locations').add({
+    companyId:CC.id,name:name,clientName:$('al-client').value.trim(),
+    address:$('al-addr').value.trim(),
+    coordinates:{lat:parseFloat($('al-lat').value)||0,lng:parseFloat($('al-lng').value)||0},
+    clientPhone:$('al-phone').value.trim(),
+    serviceNotes:$('al-notes').value.trim(),
+    defaultServiceDuration:parseInt($('al-dur').value)||30,
+    defaultJobType:'maintenance',tags:[],active:true,
+    createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  }).then(function(){
+    var m=$('modal-al');if(m)m.remove();
+    toast('Location added!',true);
+    renderLocTable();
+  }).catch(function(e){toast(e.message,false);});
+}
+
+// ── Analytics ────────────────────────────────────────
+function renderAnalytics(mc){
+  var today=new Date().toISOString().slice(0,10);
+  mc.innerHTML='<div class="pg on"><div class="pg-h"><div><div class="pg-t">Analytics</div><div class="pg-st">Planned vs Actual</div></div>'+
+    '<input type="date" id="an-dt" value="'+today+'" style="margin-bottom:0;width:auto"/></div>'+
+    '<div id="an-content"><p style="color:var(--td)">Loading…</p></div></div>';
+  loadAnalytics(today);
+  $('an-dt').onchange=function(){loadAnalytics(this.value);};
+}
+
+function loadAnalytics(date){
+  var el=$('an-content');
+  if(!el)return;
+  db.collection('routes').where('companyId','==',CC.id).where('routeDate','==',date).get()
+  .then(function(snap){
+    var rs=snap.docs.map(function(d){var x=d.data();x.id=d.id;return x;});
+    if(!rs.length){el.innerHTML='<div class="empty"><div class="empty-i">📈</div><div class="empty-t">No data for '+date+'</div></div>';return;}
+    var totalJ=rs.reduce(function(a,r){return a+(r.jobCount||0);},0);
+    var doneJ=rs.reduce(function(a,r){return a+(r.completedJobCount||0);},0);
+    var pct=totalJ?Math.round(doneJ/totalJ*100):0;
+    el.innerHTML='<div class="row3" style="margin-bottom:24px">'+
+      '<div class="stat"><div class="stat-l">Completion</div><div class="stat-v">'+pct+'%</div><div class="stat-s">'+doneJ+' of '+totalJ+'</div></div>'+
+      '<div class="stat"><div class="stat-l">Routes</div><div class="stat-v">'+rs.length+'</div></div>'+
+      '<div class="stat"><div class="stat-l">Completed</div><div class="stat-v">'+rs.filter(function(r){return r.status==='completed';}).length+'</div></div></div>'+
+      '<div class="card"><div class="sec-t">Per Crew — '+fmtDate(date)+'</div>'+
+      '<table><thead><tr><th>Crew</th><th>Route</th><th>Stops</th><th>Done</th><th>Rate</th></tr></thead><tbody>'+
+      rs.map(function(r){
+        var c=crew.find(function(x){return x.id===r.crewId;});
+        var p=r.jobCount?Math.round((r.completedJobCount||0)/r.jobCount*100):0;
+        return '<tr><td><span class="crew-dot" style="background:'+(c?c.color:'#7c8499')+'"></span> '+(c?c.name:'—')+'</td><td>'+esc(r.routeName)+'</td><td>'+(r.jobCount||0)+'</td><td>'+(r.completedJobCount||0)+'</td><td><strong>'+p+'%</strong></td></tr>';
+      }).join('')+'</tbody></table></div>';
+  });
+}
+
+// ── Settings ─────────────────────────────────────────
+function renderSettings(mc){
+  mc.innerHTML='<div class="pg on"><div class="pg-h"><div><div class="pg-t">Settings</div><div class="pg-st">Proof-of-service & company</div></div></div>'+
+    '<div class="row2">'+
+    '<div class="card"><div class="sec-t">Proof of Service</div>'+
+    '<div class="trow"><div><div class="tlabel">Before Photo</div><div class="tdesc">Required before starting</div></div><label class="tgl"><input type="checkbox" id="t-pb" onchange="savePOS()"/><span class="tgl-s"></span></label></div>'+
+    '<div class="trow"><div><div class="tlabel">After Photo</div><div class="tdesc">Required on completion</div></div><label class="tgl"><input type="checkbox" id="t-pa" onchange="savePOS()" checked/><span class="tgl-s"></span></label></div>'+
+    '<div class="trow"><div><div class="tlabel">Signature</div><div class="tdesc">Digital signature</div></div><label class="tgl"><input type="checkbox" id="t-sig" onchange="savePOS()"/><span class="tgl-s"></span></label></div>'+
+    '<div class="trow"><div><div class="tlabel">Notes</div><div class="tdesc">Completion notes</div></div><label class="tgl"><input type="checkbox" id="t-nt" onchange="savePOS()" checked/><span class="tgl-s"></span></label></div>'+
+    '<div class="trow"><div><div class="tlabel">Voice Recording</div><div class="tdesc">Voice note</div></div><label class="tgl"><input type="checkbox" id="t-vc" onchange="savePOS()"/><span class="tgl-s"></span></label></div>'+
+    '</div>'+
+    '<div class="card"><div class="sec-t">Company</div>'+
+    '<label>Name</label><input type="text" id="set-name" value="'+esc(CC.name||'')+'"/>'+
+    '<label>Dispatch Address</label><input type="text" id="set-addr" value="'+esc((CC.dispatchLocation||{}).address||'')+'"/>'+
+    '<div class="row2"><div><label>Lat</label><input type="number" id="set-lat" value="'+((CC.dispatchLocation||{}).lat||'')+'" step="0.0001"/></div>'+
+    '<div><label>Lng</label><input type="number" id="set-lng" value="'+((CC.dispatchLocation||{}).lng||'')+'" step="0.0001"/></div></div>'+
+    '<button class="btn btn-p" onclick="saveCo()">Save</button></div></div></div>';
+
+  // Load current POS settings
+  db.collection('proofSettings').doc(CC.id).get().then(function(doc){
+    if(!doc.exists)return;
+    var d=doc.data();
+    if($('t-pb'))$('t-pb').checked=!!d.requirePhotoBefore;
+    if($('t-pa'))$('t-pa').checked=!!d.requirePhotoAfter;
+    if($('t-sig'))$('t-sig').checked=!!d.requireSignature;
+    if($('t-nt'))$('t-nt').checked=!!d.requireNotes;
+    if($('t-vc'))$('t-vc').checked=!!d.requireVoiceRecording;
+  });
+}
+
+function savePOS(){
+  db.collection('proofSettings').doc(CC.id).set({
+    requirePhotoBefore:$('t-pb').checked,requirePhotoAfter:$('t-pa').checked,
+    requireSignature:$('t-sig').checked,requireNotes:$('t-nt').checked,
+    requireVoiceRecording:$('t-vc').checked,
+    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  },{merge:true}).then(function(){toast('Saved',true);});
+}
+
+function saveCo(){
+  var name=$('set-name').value.trim();
+  var addr=$('set-addr').value.trim();
+  var lat=parseFloat($('set-lat').value)||0;
+  var lng=parseFloat($('set-lng').value)||0;
+  db.collection('companies').doc(CC.id).update({
+    name:name,dispatchLocation:{lat:lat,lng:lng,address:addr},
+    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  }).then(function(){
+    CC.name=name;CC.dispatchLocation={lat:lat,lng:lng,address:addr};
+    $('s-co').textContent=name;
+    toast('Saved',true);
+  });
+}
+
+// Escape key closes modals
+document.onkeydown=function(e){
+  if(e.key==='Escape') document.querySelectorAll('.mo.open').forEach(function(m){m.remove();});
+};
+</script>
+</body>
+</html>
