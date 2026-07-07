@@ -1218,7 +1218,7 @@ function renderLocListItems(){
   return locs.map(function(l){
     var sel=gSelectedLocId===l.id;
     return '<div class="loc-item" data-id="'+l.id+'" onclick="focusLocation(\''+l.id+'\')" style="padding:12px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:'+(sel?'var(--ad)':'transparent')+';border:1px solid '+(sel?'var(--a)':'transparent')+'">'+
-      '<div style="font-weight:600;font-size:13px">'+esc(l.name)+'</div>'+
+      '<div style="display:flex;align-items:center;gap:6px"><div style="font-weight:600;font-size:13px">'+esc(l.name)+'</div>'+(l.approxLocation?'<span class="badge" style="background:var(--yd);color:var(--y);font-size:9px">approx pin</span>':'')+'</div>'+
       '<div style="font-size:11px;color:var(--td);margin-top:2px">'+esc(l.clientName||'No client')+'</div>'+
       '<div style="font-size:11px;color:var(--tm);margin-top:2px">'+esc(l.address||'No address')+'</div>'+
     '</div>';
@@ -1496,7 +1496,7 @@ function showImportCsvModal(){
     '<div style="background:var(--bg);border:1px solid var(--b);border-radius:var(--rad);padding:14px 16px;margin-bottom:16px;font-size:12px;color:var(--td)">'+
       '<strong style="color:var(--t)">Required columns (in this order):</strong><br/>'+
       '<code style="font-family:var(--mono);color:var(--a)">'+CSV_COLUMNS.join(', ')+'</code><br/><br/>'+
-      '<strong style="color:var(--t)">Notes:</strong> Name and Address are required. Latitude/Longitude are optional — if left blank, we\\'ll auto-geocode from the address (may take longer for large files). Duration defaults to 30 min if blank.'+
+      '<strong style="color:var(--t)">Notes:</strong> Name and Address are required. Latitude/Longitude are optional — if left blank, we\\'ll auto-geocode from the address. Free geocoding isn\\'t perfect for newer subdivisions: if the exact address can\\'t be found, we fall back to a city-level pin and flag it <span style="color:var(--y)">"approx pin"</span> so you can fine-tune it on the map afterward. Duration defaults to 30 min if blank.'+
       '<br/><br/><a href="#" onclick="downloadCsvTemplate();return false;" style="color:var(--a)">⬇ Download blank template</a>'+
     '</div>'+
 
@@ -1601,12 +1601,22 @@ function runCsvImport(){
   var btn=$('csv-import-btn');
   btn.textContent='Importing 0/'+_csvRows.length+'…'; btn.disabled=true;
 
-  var done=0, failed=0;
+  var done=0, failed=0, approx=0;
   var total=_csvRows.length;
+
+  // Pull "City, State" from the tail of a full address for a fallback geocode attempt
+  function cityStateFallback(address){
+    var parts = address.split(',').map(function(p){return p.trim();});
+    if(parts.length>=2) return parts.slice(-2).join(', '); // last two segments, e.g. "Tampa, FL"
+    return null;
+  }
 
   function importNext(idx){
     if(idx>=total){
-      toast('Imported '+done+' locations'+(failed?' ('+failed+' failed)':''),true);
+      var msg='Imported '+done+' locations';
+      if(approx) msg += ' ('+approx+' approximate — city-level pin, please verify)';
+      if(failed) msg += ' ('+failed+' failed)';
+      toast(msg,true);
       closeCsvModal();
       return;
     }
@@ -1619,41 +1629,56 @@ function runCsvImport(){
 
     var lat=parseFloat(row.Latitude), lng=parseFloat(row.Longitude);
 
-    function saveRow(finalLat,finalLng){
+    function saveRow(finalLat,finalLng,isApprox){
       db.collection('locations').add({
         companyId:CC.id,
         name:row.Name,
         clientName:row.Client||'',
         address:row.Address,
         coordinates:{lat:finalLat||0,lng:finalLng||0},
+        approxLocation: !!isApprox,
         clientPhone:row.Phone||'',
         serviceNotes:row.Notes||'',
         defaultServiceDuration:parseInt(row.Duration)||30,
         defaultJobType:'maintenance',tags:[],active:true,
         createdAt:firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt:firebase.firestore.FieldValue.serverTimestamp()
-      }).then(function(){ done++; importNext(idx+1); })
+      }).then(function(){ done++; if(isApprox)approx++; importNext(idx+1); })
         .catch(function(){ failed++; importNext(idx+1); });
     }
 
-    if(lat && lng && !isNaN(lat) && !isNaN(lng)){
-      saveRow(lat,lng);
-    } else {
-      // Auto-geocode via free Nominatim (rate-limited to ~1/sec to be respectful)
-      fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(row.Address))
+    function geocode(query, onSuccess, onFail){
+      fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(query))
         .then(function(r){return r.json();})
         .then(function(results){
-          if(results && results.length){
-            saveRow(parseFloat(results[0].lat), parseFloat(results[0].lon));
-          } else {
-            saveRow(0,0); // Save anyway without coords, user can fix later on map
-          }
+          if(results && results.length) onSuccess(parseFloat(results[0].lat), parseFloat(results[0].lon));
+          else onFail();
         })
-        .catch(function(){ saveRow(0,0); });
+        .catch(onFail);
+    }
+
+    if(lat && lng && !isNaN(lat) && !isNaN(lng)){
+      saveRow(lat,lng,false);
+    } else {
+      // Tier 1: try full address
+      geocode(row.Address, function(foundLat,foundLng){
+        saveRow(foundLat,foundLng,false);
+      }, function(){
+        // Tier 2: fall back to city/state only (approximate pin, clearly flagged)
+        var fallbackQuery = cityStateFallback(row.Address);
+        if(!fallbackQuery){ saveRow(0,0,true); return; }
+        setTimeout(function(){
+          geocode(fallbackQuery, function(foundLat,foundLng){
+            saveRow(foundLat,foundLng,true);
+          }, function(){
+            saveRow(0,0,true); // Both tiers failed — still save so it's not lost, flagged for manual fix
+          });
+        }, 1100); // respect Nominatim's rate limit between the two attempts
+      });
     }
   }
 
-  // Sequential import — each row waits for the previous (including geocode fetch) to finish,
+  // Sequential import — each row (including any geocode retries) finishes before the next starts,
   // which naturally rate-limits requests to Nominatim's free geocoding service
   importNext(0);
 }
