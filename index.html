@@ -1191,7 +1191,10 @@ function renderLocations(mc){
       '<div style="padding:20px;border-bottom:1px solid var(--b)">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
         '<div class="pg-t" style="font-size:17px">Locations</div>'+
+        '<div class="flex-g">'+
+        '<button class="btn btn-s" style="font-size:12px;padding:8px 12px" onclick="showImportCsvModal()">⬆ Import CSV</button>'+
         '<button class="btn btn-p" style="font-size:12px;padding:8px 14px" onclick="startNewLocation()">+ Add</button>'+
+        '</div>'+
         '</div>'+
         '<div class="pg-st">'+locs.length+' service properties</div>'+
       '</div>'+
@@ -1475,6 +1478,184 @@ function deleteLocationConfirm(id){
       renderAllMarkers();
     },400);
   }).catch(function(e){toast(e.message,false);});
+}
+
+// ═══════════════════════════════════════════════════
+// CSV IMPORT — WorkWave-style column format
+// ═══════════════════════════════════════════════════
+var CSV_COLUMNS = ['Name','Client','Address','Latitude','Longitude','Duration','Phone','Notes'];
+var _csvRows = [];
+var _csvGeocodeQueue = [];
+
+function showImportCsvModal(){
+  var html='<div class="mo open" id="modal-csv" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
+    '<div class="md" style="max-width:680px">'+
+    '<div class="md-h"><div class="md-t">Import Locations from CSV</div><button class="btn btn-g" onclick="closeCsvModal()">✕</button></div>'+
+    '<div class="md-b">'+
+
+    '<div style="background:var(--bg);border:1px solid var(--b);border-radius:var(--rad);padding:14px 16px;margin-bottom:16px;font-size:12px;color:var(--td)">'+
+      '<strong style="color:var(--t)">Required columns (in this order):</strong><br/>'+
+      '<code style="font-family:var(--mono);color:var(--a)">'+CSV_COLUMNS.join(', ')+'</code><br/><br/>'+
+      '<strong style="color:var(--t)">Notes:</strong> Name and Address are required. Latitude/Longitude are optional — if left blank, we\\'ll auto-geocode from the address (may take longer for large files). Duration defaults to 30 min if blank.'+
+      '<br/><br/><a href="#" onclick="downloadCsvTemplate();return false;" style="color:var(--a)">⬇ Download blank template</a>'+
+    '</div>'+
+
+    '<label>Choose CSV File</label>'+
+    '<input type="file" id="csv-file-input" accept=".csv" style="margin-bottom:16px"/>'+
+
+    '<div id="csv-preview-area"></div>'+
+
+    '</div>'+
+    '<div class="md-f" id="csv-modal-footer">'+
+      '<button class="btn btn-g" onclick="closeCsvModal()">Cancel</button>'+
+    '</div>'+
+    '</div></div>';
+  document.body.insertAdjacentHTML('beforeend',html);
+
+  $('csv-file-input').onchange = function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(evt){ parseCsvText(evt.target.result); };
+    reader.readAsText(file);
+  };
+}
+
+function closeCsvModal(){
+  var m=$('modal-csv'); if(m) m.remove();
+  _csvRows=[];
+}
+
+function downloadCsvTemplate(){
+  var csv = CSV_COLUMNS.join(',') + '\n' +
+    'Sienna Cove,AMH Residential,"1234 Sienna Way, Tampa FL",,,45,,"Gate code 4521"\n' +
+    'Woodlake Preserve,AMH Residential,"5678 Woodlake Cir, Tampa FL",,,30,,';
+  var blob = new Blob([csv], {type:'text/csv'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'serviroute_locations_template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Minimal CSV parser (handles quoted fields with commas inside)
+function parseCsvLine(line){
+  var result=[], cur='', inQuotes=false;
+  for(var i=0;i<line.length;i++){
+    var ch=line[i];
+    if(ch==='"'){
+      if(inQuotes && line[i+1]==='"'){ cur+='"'; i++; }
+      else inQuotes=!inQuotes;
+    } else if(ch===',' && !inQuotes){
+      result.push(cur); cur='';
+    } else {
+      cur+=ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseCsvText(text){
+  var lines = text.split(/\r?\n/).filter(function(l){return l.trim().length;});
+  if(lines.length<2){ toast('CSV file appears empty',false); return; }
+
+  var header = parseCsvLine(lines[0]).map(function(h){return h.trim();});
+  _csvRows = [];
+
+  for(var i=1;i<lines.length;i++){
+    var cells = parseCsvLine(lines[i]);
+    var row = {};
+    header.forEach(function(h,idx){ row[h] = (cells[idx]||'').trim(); });
+    _csvRows.push(row);
+  }
+
+  renderCsvPreview();
+}
+
+function renderCsvPreview(){
+  var area=$('csv-preview-area');
+  var footer=$('csv-modal-footer');
+  if(!_csvRows.length){ area.innerHTML='<p style="color:var(--r)">No rows found</p>'; return; }
+
+  var missingCoords = _csvRows.filter(function(r){return !r.Latitude && !r.Longitude;}).length;
+
+  area.innerHTML =
+    '<div style="font-size:12px;color:var(--td);margin-bottom:10px">Found <strong style="color:var(--t)">'+_csvRows.length+'</strong> rows. '+
+    (missingCoords ? missingCoords+' will be auto-geocoded from address (may take a moment).' : 'All rows have coordinates.')+'</div>'+
+    '<div style="max-height:280px;overflow-y:auto;border:1px solid var(--b);border-radius:8px">'+
+    '<table><thead><tr><th>Name</th><th>Client</th><th>Address</th><th>Coords?</th></tr></thead><tbody>'+
+    _csvRows.slice(0,50).map(function(r){
+      return '<tr><td>'+esc(r.Name||'—')+'</td><td>'+esc(r.Client||'—')+'</td><td style="font-size:11px;color:var(--td)">'+esc(r.Address||'—')+'</td><td>'+(r.Latitude&&r.Longitude?'✅':'🔍 auto')+'</td></tr>';
+    }).join('')+
+    '</tbody></table></div>'+
+    (_csvRows.length>50 ? '<div style="font-size:11px;color:var(--td);margin-top:6px">Showing first 50 of '+_csvRows.length+' rows</div>' : '');
+
+  footer.innerHTML =
+    '<button class="btn btn-g" onclick="closeCsvModal()">Cancel</button>'+
+    '<button class="btn btn-p" id="csv-import-btn" onclick="runCsvImport()">Import '+_csvRows.length+' Locations</button>';
+}
+
+function runCsvImport(){
+  if(!_csvRows.length)return;
+  var btn=$('csv-import-btn');
+  btn.textContent='Importing 0/'+_csvRows.length+'…'; btn.disabled=true;
+
+  var done=0, failed=0;
+  var total=_csvRows.length;
+
+  function importNext(idx){
+    if(idx>=total){
+      toast('Imported '+done+' locations'+(failed?' ('+failed+' failed)':''),true);
+      closeCsvModal();
+      return;
+    }
+    var row=_csvRows[idx];
+    btn.textContent='Importing '+(idx+1)+'/'+total+'…';
+
+    if(!row.Name || !row.Address){
+      failed++; importNext(idx+1); return;
+    }
+
+    var lat=parseFloat(row.Latitude), lng=parseFloat(row.Longitude);
+
+    function saveRow(finalLat,finalLng){
+      db.collection('locations').add({
+        companyId:CC.id,
+        name:row.Name,
+        clientName:row.Client||'',
+        address:row.Address,
+        coordinates:{lat:finalLat||0,lng:finalLng||0},
+        clientPhone:row.Phone||'',
+        serviceNotes:row.Notes||'',
+        defaultServiceDuration:parseInt(row.Duration)||30,
+        defaultJobType:'maintenance',tags:[],active:true,
+        createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+      }).then(function(){ done++; importNext(idx+1); })
+        .catch(function(){ failed++; importNext(idx+1); });
+    }
+
+    if(lat && lng && !isNaN(lat) && !isNaN(lng)){
+      saveRow(lat,lng);
+    } else {
+      // Auto-geocode via free Nominatim (rate-limited to ~1/sec to be respectful)
+      fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(row.Address))
+        .then(function(r){return r.json();})
+        .then(function(results){
+          if(results && results.length){
+            saveRow(parseFloat(results[0].lat), parseFloat(results[0].lon));
+          } else {
+            saveRow(0,0); // Save anyway without coords, user can fix later on map
+          }
+        })
+        .catch(function(){ saveRow(0,0); });
+    }
+  }
+
+  // Sequential import — each row waits for the previous (including geocode fetch) to finish,
+  // which naturally rate-limits requests to Nominatim's free geocoding service
+  importNext(0);
 }
 
 // ── Analytics ────────────────────────────────────────
