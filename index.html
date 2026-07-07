@@ -383,19 +383,28 @@ $('btn-reg').onclick = function(){
   this.textContent='Creating…';this.disabled=true;
   isRegistering=true;
   var self=this;
+  console.log('[REG] Starting registration for',email);
 
   // Safety timeout — if nothing resolves in 15s, show error instead of hanging
   var timedOut=false;
   var timeoutId=setTimeout(function(){
     timedOut=true;
+    console.error('[REG] TIMEOUT after 15s');
     msg('Request timed out. This usually means your domain is not authorized in Firebase. Go to Firebase Console → Authentication → Settings → Authorized domains → add: '+window.location.hostname,true);
     self.textContent='Create Company & Sign In';self.disabled=false;
   },15000);
 
   // Try create user, or sign in if exists
+  console.log('[REG] Step 1: createUserWithEmailAndPassword');
   var p = auth.createUserWithEmailAndPassword(email,pass)
+    .then(function(cred){console.log('[REG] Step 1 OK - new user created:',cred.user.uid);return cred;})
     .catch(function(e){
-      if(e.code==='auth/email-already-in-use')return auth.signInWithEmailAndPassword(email,pass);
+      console.warn('[REG] Step 1 failed:',e.code,e.message);
+      if(e.code==='auth/email-already-in-use'){
+        console.log('[REG] Email exists, trying sign in instead');
+        return auth.signInWithEmailAndPassword(email,pass)
+          .then(function(cred){console.log('[REG] Signed in existing user:',cred.user.uid);return cred;});
+      }
       throw e;
     });
 
@@ -404,10 +413,12 @@ $('btn-reg').onclick = function(){
   p.then(function(cred){
     savedUid=cred.user.uid;
     CU=cred.user;
+    console.log('[REG] Step 2: checking if profile exists for',savedUid);
     // Check if profile already exists
     return db.collection('users').doc(savedUid).get().then(function(doc){
-      if(doc.exists) return; // Already set up
+      if(doc.exists){console.log('[REG] Profile already exists, skipping creation');return;}
 
+      console.log('[REG] Step 3: creating company doc');
       // Create company
       return db.collection('companies').add({
         name:company,slug:company.toLowerCase().replace(/\s+/g,'-'),
@@ -415,6 +426,8 @@ $('btn-reg').onclick = function(){
         createdAt:firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt:firebase.firestore.FieldValue.serverTimestamp()
       }).then(function(compRef){
+        console.log('[REG] Step 3 OK - company created:',compRef.id);
+        console.log('[REG] Step 4: creating user profile doc');
         // Create user profile
         return db.collection('users').doc(savedUid).set({
           companyId:compRef.id,email:email,fullName:name,phone:'',role:'owner',active:true,crewId:null,
@@ -422,22 +435,26 @@ $('btn-reg').onclick = function(){
           createdAt:firebase.firestore.FieldValue.serverTimestamp(),
           updatedAt:firebase.firestore.FieldValue.serverTimestamp()
         }).then(function(){
+          console.log('[REG] Step 4 OK - profile created');
+          console.log('[REG] Step 5: creating proofSettings doc');
           return db.collection('proofSettings').doc(compRef.id).set({
             requirePhotoBefore:false,requirePhotoAfter:true,
             requireSignature:false,requireNotes:true,requireVoiceRecording:false
-          });
+          }).then(function(){console.log('[REG] Step 5 OK - proofSettings created');});
         });
       });
     });
   })
   .then(function(){
     // Success — clear timeout, unblock auth listener, manually load the app
+    console.log('[REG] All steps complete! Loading app for uid:',savedUid);
     clearTimeout(timeoutId);
-    if(timedOut)return;
+    if(timedOut){console.warn('[REG] Already timed out, ignoring late success');return;}
     isRegistering=false;
     loadProfile(savedUid);
   })
   .catch(function(e){
+    console.error('[REG] FAILED at some step:',e.code,e.message,e);
     clearTimeout(timeoutId);
     isRegistering=false;
     if(timedOut)return; // Already showed timeout message
@@ -456,9 +473,12 @@ $('btn-reg').onclick = function(){
 
 // Load profile — creates missing Firestore data if needed
 function loadProfile(uid){
+  console.log('[LOADPROFILE] Called for uid:',uid);
   db.collection('users').doc(uid).get().then(function(doc){
+    console.log('[LOADPROFILE] users doc exists?',doc.exists);
     if(!doc.exists){
       // User in Auth but no Firestore profile — redirect to register
+      console.warn('[LOADPROFILE] No profile found, redirecting to register form');
       msg('Account found but setup incomplete. Please register your company below.',true);
       hide($('f-login'));
       show($('f-register'));
@@ -469,17 +489,21 @@ function loadProfile(uid){
     CP={id:doc.id};
     var d=doc.data();
     for(var k in d) CP[k]=d[k];
+    console.log('[LOADPROFILE] Profile loaded, companyId:',CP.companyId);
 
     return db.collection('companies').doc(CP.companyId).get();
   }).then(function(compDoc){
     if(!compDoc) return;
+    console.log('[LOADPROFILE] Company doc exists?',compDoc.exists);
     if(!compDoc.exists){toast('Company not found.',false);auth.signOut();return;}
     CC={id:compDoc.id};
     var d=compDoc.data();
     for(var k in d) CC[k]=d[k];
+    console.log('[LOADPROFILE] Calling initApp()');
 
     initApp();
   }).catch(function(e){
+    console.error('[LOADPROFILE] Error:',e.code,e.message);
     toast('Error: '+e.message,false);
     auth.signOut();
   });
