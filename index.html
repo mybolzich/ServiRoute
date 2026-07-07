@@ -214,6 +214,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--s2)}
 <script>
 // ── State ────────────────────────────────────────────
 var CU = null;   // current firebase user
+var isRegistering = false; // guard flag: prevents onAuthStateChanged from interrupting registration
 var CP = null;   // current profile (firestore)
 var CC = null;   // current company (firestore)
 var crew = [];
@@ -317,6 +318,7 @@ function calcStats(dp,stops){
 
 // ── Auth ─────────────────────────────────────────────
 auth.onAuthStateChanged(function(user){
+  if(isRegistering) return; // Registration flow handles its own profile creation — don't race it
   if(user){
     CU = user;
     loadProfile(user.uid);
@@ -379,6 +381,7 @@ $('btn-reg').onclick = function(){
   if(pass.length<6){msg('Password needs 6+ characters.',true);return;}
 
   this.textContent='Creating…';this.disabled=true;
+  isRegistering=true;
   var self=this;
 
   // Safety timeout — if nothing resolves in 15s, show error instead of hanging
@@ -396,11 +399,14 @@ $('btn-reg').onclick = function(){
       throw e;
     });
 
+  var savedUid=null;
+
   p.then(function(cred){
-    var uid=cred.user.uid;
+    savedUid=cred.user.uid;
+    CU=cred.user;
     // Check if profile already exists
-    return db.collection('users').doc(uid).get().then(function(doc){
-      if(doc.exists) return; // Already set up, just continue to onAuthStateChanged
+    return db.collection('users').doc(savedUid).get().then(function(doc){
+      if(doc.exists) return; // Already set up
 
       // Create company
       return db.collection('companies').add({
@@ -410,7 +416,7 @@ $('btn-reg').onclick = function(){
         updatedAt:firebase.firestore.FieldValue.serverTimestamp()
       }).then(function(compRef){
         // Create user profile
-        return db.collection('users').doc(uid).set({
+        return db.collection('users').doc(savedUid).set({
           companyId:compRef.id,email:email,fullName:name,phone:'',role:'owner',active:true,crewId:null,
           permissions:{canViewAllCrews:true,canEditOwnRoutes:true,canManageUsers:true},
           createdAt:firebase.firestore.FieldValue.serverTimestamp(),
@@ -424,8 +430,16 @@ $('btn-reg').onclick = function(){
       });
     });
   })
+  .then(function(){
+    // Success — clear timeout, unblock auth listener, manually load the app
+    clearTimeout(timeoutId);
+    if(timedOut)return;
+    isRegistering=false;
+    loadProfile(savedUid);
+  })
   .catch(function(e){
     clearTimeout(timeoutId);
+    isRegistering=false;
     if(timedOut)return; // Already showed timeout message
     var m=e.message;
     if(e.code==='auth/invalid-email') m='Invalid email address.';
