@@ -19,6 +19,8 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 var auth = firebase.auth();
+// ⚠️ Replace with your Google Maps API key (Maps JavaScript API + Geocoding API enabled)
+var GOOGLE_MAPS_API_KEY = 'YOUR_API_KEY_HERE';
 </script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
@@ -944,57 +946,335 @@ function loadLocs(){
   var u=db.collection('locations').where('companyId','==',CC.id).where('active','==',true)
     .onSnapshot(function(snap){
       locs=snap.docs.map(function(d){var x=d.data();x.id=d.id;return x;});
+      // Live-refresh map view if currently open
+      var scroll=$('loc-list-scroll');
+      if(scroll) scroll.innerHTML=renderLocListItems();
+      if(gMap) renderAllMarkers();
     });
   unsubs.push(u);
 }
 
+// ═══════════════════════════════════════════════════
+// LOCATIONS — Full-screen map interface
+// ═══════════════════════════════════════════════════
+var gMap=null;
+var gMarkers={};       // locationId -> google.maps.Marker
+var gGeocoder=null;
+var gTempMarker=null;  // marker for new/unsaved location being placed
+var gSelectedLocId=null;
+var gMapsLoaded=false;
+var gMapsLoading=false;
+
+function loadGoogleMaps(cb){
+  if(gMapsLoaded){cb();return;}
+  if(gMapsLoading){
+    var chk=setInterval(function(){if(gMapsLoaded){clearInterval(chk);cb();}},200);
+    return;
+  }
+  if(!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY==='YOUR_API_KEY_HERE'){
+    toast('Google Maps API key not configured yet',false);
+    return;
+  }
+  gMapsLoading=true;
+  window._gmCallback=function(){gMapsLoaded=true;gMapsLoading=false;cb();};
+  var s=document.createElement('script');
+  s.src='https://maps.googleapis.com/maps/api/js?key='+GOOGLE_MAPS_API_KEY+'&callback=_gmCallback&libraries=places';
+  s.async=true;
+  document.head.appendChild(s);
+}
+
 function renderLocations(mc){
-  mc.innerHTML='<div class="pg on"><div class="pg-h"><div><div class="pg-t">Locations</div><div class="pg-st">Service properties</div></div>'+
-    '<button class="btn btn-p" id="btn-add-loc">+ Add Location</button></div>'+
-    '<div class="card" id="loc-tbl"></div></div>';
-  $('btn-add-loc').onclick=showAddLocModal;
-  renderLocTable();
+  mc.innerHTML=
+    '<div class="pg on" style="padding:0;margin:-28px;height:calc(100vh);position:relative;overflow:hidden">'+
+
+    // Slide-out left panel
+    '<div id="loc-panel" style="position:absolute;top:0;left:0;bottom:0;width:380px;background:var(--s);border-right:1px solid var(--b);z-index:20;display:flex;flex-direction:column;box-shadow:4px 0 24px rgba(0,0,0,.3)">'+
+
+      '<div style="padding:20px;border-bottom:1px solid var(--b)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
+        '<div class="pg-t" style="font-size:17px">Locations</div>'+
+        '<button class="btn btn-p" style="font-size:12px;padding:8px 14px" onclick="startNewLocation()">+ Add</button>'+
+        '</div>'+
+        '<div class="pg-st">'+locs.length+' service properties</div>'+
+      '</div>'+
+
+      '<div id="loc-list-scroll" style="flex:1;overflow-y:auto;padding:8px">'+
+        renderLocListItems()+
+      '</div>'+
+    '</div>'+
+
+    // New/Edit location detail slide-over (hidden by default)
+    '<div id="loc-editor" style="position:absolute;top:0;left:0;bottom:0;width:380px;background:var(--s);border-right:1px solid var(--b);z-index:30;display:none;flex-direction:column;box-shadow:4px 0 24px rgba(0,0,0,.4)">'+
+    '</div>'+
+
+    // Map container
+    '<div id="loc-map" style="position:absolute;top:0;right:0;bottom:0;left:380px;background:#1a1d26"></div>'+
+
+    // Loading state
+    '<div id="map-loading" style="position:absolute;inset:380px 0 0 380px;display:flex;align-items:center;justify-content:center;color:var(--td);background:var(--bg)">Loading map…</div>'+
+
+    '</div>';
+
+  loadGoogleMaps(function(){
+    initMap();
+    $('map-loading').style.display='none';
+  });
 }
 
-function renderLocTable(){
-  var el=$('loc-tbl');
-  if(!el)return;
-  if(!locs.length){el.innerHTML='<div class="empty"><div class="empty-i">📍</div><div class="empty-t">No locations yet</div></div>';return;}
-  el.innerHTML='<table><thead><tr><th>Name</th><th>Client</th><th>Address</th><th>Duration</th></tr></thead><tbody>'+
-    locs.map(function(l){return '<tr><td><strong>'+esc(l.name)+'</strong></td><td>'+(l.clientName||'—')+'</td><td style="font-size:12px;color:var(--td)">'+(l.address||'—')+'</td><td>'+(l.defaultServiceDuration||30)+'min</td></tr>';}).join('')+
-    '</tbody></table>';
+function renderLocListItems(){
+  if(!locs.length) return '<div class="empty" style="padding:40px 20px"><div class="empty-i">📍</div><div class="empty-t">No locations yet</div><p style="color:var(--td);font-size:12px">Click + Add above, or click the map</p></div>';
+  return locs.map(function(l){
+    var sel=gSelectedLocId===l.id;
+    return '<div class="loc-item" data-id="'+l.id+'" onclick="focusLocation(\''+l.id+'\')" style="padding:12px;border-radius:8px;cursor:pointer;margin-bottom:4px;background:'+(sel?'var(--ad)':'transparent')+';border:1px solid '+(sel?'var(--a)':'transparent')+'">'+
+      '<div style="font-weight:600;font-size:13px">'+esc(l.name)+'</div>'+
+      '<div style="font-size:11px;color:var(--td);margin-top:2px">'+esc(l.clientName||'No client')+'</div>'+
+      '<div style="font-size:11px;color:var(--tm);margin-top:2px">'+esc(l.address||'No address')+'</div>'+
+    '</div>';
+  }).join('');
 }
 
-function showAddLocModal(){
-  var html='<div class="mo open" id="modal-al" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
-    '<div class="md"><div class="md-h"><div class="md-t">Add Location</div><button class="btn btn-g" onclick="$(\'modal-al\').classList.remove(\'open\')">✕</button></div>'+
-    '<div class="md-b">'+
-    '<div class="row2"><div><label>Name</label><input type="text" id="al-name"/></div><div><label>Client</label><input type="text" id="al-client"/></div></div>'+
-    '<label>Address</label><input type="text" id="al-addr" placeholder="1234 Main St, Tampa FL"/>'+
-    '<div class="row2"><div><label>Latitude</label><input type="number" id="al-lat" step="0.0001"/></div><div><label>Longitude</label><input type="number" id="al-lng" step="0.0001"/></div></div>'+
-    '<div class="row2"><div><label>Duration (min)</label><input type="number" id="al-dur" value="30"/></div><div><label>Client Phone</label><input type="text" id="al-phone"/></div></div>'+
-    '<label>Notes</label><textarea id="al-notes" rows="2" style="resize:none;margin-bottom:0" placeholder="Gate code, instructions…"></textarea>'+
-    '</div><div class="md-f"><button class="btn btn-g" onclick="$(\'modal-al\').classList.remove(\'open\')">Cancel</button>'+
-    '<button class="btn btn-p" onclick="addLoc()">Add Location</button></div></div></div>';
-  document.body.insertAdjacentHTML('beforeend',html);
+function initMap(){
+  var center = (CC.dispatchLocation && CC.dispatchLocation.lat) ? CC.dispatchLocation : {lat:28.1518,lng:-82.3743};
+  gMap = new google.maps.Map($('loc-map'), {
+    center: center,
+    zoom: 11,
+    mapId: 'DEMO_MAP_ID',
+    disableDefaultUI: false,
+    zoomControl: true,
+    streetViewControl: false,
+    fullscreenControl: false,
+    styles: [
+      {elementType:'geometry',stylers:[{color:'#1a1d26'}]},
+      {elementType:'labels.text.stroke',stylers:[{color:'#1a1d26'}]},
+      {elementType:'labels.text.fill',stylers:[{color:'#7c8499'}]},
+      {featureType:'road',elementType:'geometry',stylers:[{color:'#2a3045'}]},
+      {featureType:'water',elementType:'geometry',stylers:[{color:'#0f1117'}]},
+      {featureType:'poi',stylers:[{visibility:'off'}]},
+      {featureType:'transit',stylers:[{visibility:'off'}]}
+    ]
+  });
+  gGeocoder = new google.maps.Geocoder();
+
+  // Click map to drop a pin — opens editor for new location if none open
+  gMap.addListener('click', function(e){
+    var editorOpen = $('loc-editor') && $('loc-editor').style.display==='flex';
+    if(!editorOpen){
+      startNewLocation();
+      setTimeout(function(){
+        placeTempMarker(e.latLng.lat(), e.latLng.lng());
+        reverseGeocode(e.latLng.lat(), e.latLng.lng());
+      }, 50);
+      return;
+    }
+    placeTempMarker(e.latLng.lat(), e.latLng.lng());
+    reverseGeocode(e.latLng.lat(), e.latLng.lng());
+  });
+
+  renderAllMarkers();
 }
 
-function addLoc(){
-  var name=$('al-name').value.trim();
-  if(!name){toast('Name required',false);return;}
-  db.collection('locations').add({
-    companyId:CC.id,name:name,clientName:$('al-client').value.trim(),
-    address:$('al-addr').value.trim(),
-    coordinates:{lat:parseFloat($('al-lat').value)||0,lng:parseFloat($('al-lng').value)||0},
-    clientPhone:$('al-phone').value.trim(),
-    serviceNotes:$('al-notes').value.trim(),
-    defaultServiceDuration:parseInt($('al-dur').value)||30,
-    defaultJobType:'maintenance',tags:[],active:true,
-    createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()
-  }).then(function(){
-    var m=$('modal-al');if(m)m.remove();
-    toast('Location added!',true);
-    renderLocTable();
+function renderAllMarkers(){
+  // Clear old markers
+  Object.keys(gMarkers).forEach(function(id){gMarkers[id].setMap(null);});
+  gMarkers={};
+
+  locs.forEach(function(l){
+    if(!l.coordinates || !l.coordinates.lat) return;
+    var marker = new google.maps.Marker({
+      position:{lat:l.coordinates.lat,lng:l.coordinates.lng},
+      map:gMap,
+      title:l.name,
+      icon:{
+        path:google.maps.SymbolPath.CIRCLE,
+        scale:9,
+        fillColor:'#3d7eff',
+        fillOpacity:1,
+        strokeColor:'#fff',
+        strokeWeight:2
+      }
+    });
+    marker.addListener('click', function(){ focusLocation(l.id); });
+    gMarkers[l.id]=marker;
+  });
+}
+
+function focusLocation(id){
+  gSelectedLocId=id;
+  var l=locs.find(function(x){return x.id===id;});
+  if(!l)return;
+  if(l.coordinates && l.coordinates.lat){
+    gMap.panTo({lat:l.coordinates.lat,lng:l.coordinates.lng});
+    gMap.setZoom(15);
+  }
+  // Highlight marker
+  Object.keys(gMarkers).forEach(function(mid){
+    gMarkers[mid].setIcon({path:google.maps.SymbolPath.CIRCLE,scale:9,fillColor:mid===id?'#22c55e':'#3d7eff',fillOpacity:1,strokeColor:'#fff',strokeWeight:2});
+  });
+  var scroll=$('loc-list-scroll');
+  if(scroll) scroll.innerHTML=renderLocListItems();
+  openLocationEditor(l);
+}
+
+function startNewLocation(){
+  gSelectedLocId=null;
+  openLocationEditor(null);
+}
+
+function openLocationEditor(loc){
+  var isNew = !loc;
+  var l = loc || {name:'',clientName:'',address:'',clientPhone:'',defaultServiceDuration:30,serviceNotes:'',coordinates:null};
+
+  var editor=$('loc-editor');
+  editor.style.display='flex';
+  editor.innerHTML=
+    '<div style="padding:20px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center">'+
+      '<div class="pg-t" style="font-size:16px">'+(isNew?'New Location':'Edit Location')+'</div>'+
+      '<button class="btn btn-g" onclick="closeLocationEditor()">✕</button>'+
+    '</div>'+
+    '<div style="flex:1;overflow-y:auto;padding:20px">'+
+      '<label>Location Name</label><input type="text" id="le-name" value="'+esc(l.name)+'" placeholder="Sienna Cove"/>'+
+      '<label>Client Name</label><input type="text" id="le-client" value="'+esc(l.clientName||'')+'" placeholder="AMH Residential"/>'+
+      '<label>Address</label>'+
+      '<div style="display:flex;gap:6px;margin-bottom:16px">'+
+        '<input type="text" id="le-addr" value="'+esc(l.address||'')+'" placeholder="1234 Main St, Tampa FL" style="margin-bottom:0;flex:1"/>'+
+        '<button class="btn btn-s" style="padding:10px 12px" onclick="geocodeAddress()" title="Find on map">🔍</button>'+
+      '</div>'+
+      '<div id="le-pin-status" style="font-size:11px;color:'+(l.coordinates&&l.coordinates.lat?'var(--g)':'var(--td)')+';margin-top:-10px;margin-bottom:16px">'+
+        (l.coordinates&&l.coordinates.lat ? '📍 Pin set: '+l.coordinates.lat.toFixed(5)+', '+l.coordinates.lng.toFixed(5) : '📍 No pin yet — search address or click the map')+
+      '</div>'+
+      '<div class="row2">'+
+        '<div><label>Service Duration (min)</label><input type="number" id="le-dur" value="'+(l.defaultServiceDuration||30)+'"/></div>'+
+        '<div><label>Client Phone</label><input type="text" id="le-phone" value="'+esc(l.clientPhone||'')+'"/></div>'+
+      '</div>'+
+      '<label>Service Notes</label><textarea id="le-notes" rows="3" style="resize:none" placeholder="Gate code, backyard access, special instructions…">'+esc(l.serviceNotes||'')+'</textarea>'+
+    '</div>'+
+    '<div style="padding:16px 20px;border-top:1px solid var(--b);display:flex;gap:8px">'+
+      (isNew?'':'<button class="btn btn-s" style="color:var(--r);border-color:var(--r)" onclick="deleteLocationConfirm(\''+l.id+'\')">Delete</button>')+
+      '<button class="btn btn-p" style="flex:1" onclick="saveLocation('+(isNew?'null':'\''+l.id+'\'')+')">'+(isNew?'Create Location':'Save Changes')+'</button>'+
+    '</div>';
+
+  // Store current pin coords on a working var
+  window._leCoords = (l.coordinates && l.coordinates.lat) ? {lat:l.coordinates.lat,lng:l.coordinates.lng} : null;
+
+  if(window._leCoords && gMap){
+    placeTempMarker(window._leCoords.lat, window._leCoords.lng, true);
+  } else if(gTempMarker){
+    gTempMarker.setMap(null);
+    gTempMarker=null;
+  }
+}
+
+function closeLocationEditor(){
+  $('loc-editor').style.display='none';
+  if(gTempMarker){gTempMarker.setMap(null);gTempMarker=null;}
+  window._leCoords=null;
+}
+
+function placeTempMarker(lat,lng,skipPan){
+  window._leCoords={lat:lat,lng:lng};
+  if(gTempMarker){
+    gTempMarker.setPosition({lat:lat,lng:lng});
+  } else {
+    gTempMarker = new google.maps.Marker({
+      position:{lat:lat,lng:lng},
+      map:gMap,
+      draggable:true,
+      icon:{path:google.maps.SymbolPath.CIRCLE,scale:11,fillColor:'#f59e0b',fillOpacity:1,strokeColor:'#fff',strokeWeight:3}
+    });
+    gTempMarker.addListener('dragend', function(e){
+      window._leCoords={lat:e.latLng.lat(),lng:e.latLng.lng()};
+      updatePinStatus();
+      reverseGeocode(e.latLng.lat(), e.latLng.lng());
+    });
+  }
+  if(!skipPan){ gMap.panTo({lat:lat,lng:lng}); gMap.setZoom(16); }
+  updatePinStatus();
+}
+
+function updatePinStatus(){
+  var el=$('le-pin-status');
+  if(!el || !window._leCoords) return;
+  el.style.color='var(--g)';
+  el.textContent='📍 Pin set: '+window._leCoords.lat.toFixed(5)+', '+window._leCoords.lng.toFixed(5);
+}
+
+function geocodeAddress(){
+  var addr=$('le-addr').value.trim();
+  if(!addr){toast('Enter an address first',false);return;}
+  gGeocoder.geocode({address:addr}, function(results,status){
+    if(status==='OK' && results[0]){
+      var loc=results[0].geometry.location;
+      placeTempMarker(loc.lat(), loc.lng());
+      // Update address field with formatted version
+      $('le-addr').value = results[0].formatted_address;
+      toast('Address found!',true);
+    } else {
+      toast('Could not find that address. Try clicking the map instead.',false);
+    }
+  });
+}
+
+function reverseGeocode(lat,lng){
+  gGeocoder.geocode({location:{lat:lat,lng:lng}}, function(results,status){
+    if(status==='OK' && results[0]){
+      var addrField=$('le-addr');
+      if(addrField && !addrField.value.trim()){
+        addrField.value=results[0].formatted_address;
+      }
+    }
+  });
+}
+
+function saveLocation(existingId){
+  var name=$('le-name').value.trim();
+  if(!name){toast('Location name required',false);return;}
+  if(!window._leCoords){toast('Please set a pin — search the address or click the map',false);return;}
+
+  var data={
+    name:name,
+    clientName:$('le-client').value.trim(),
+    address:$('le-addr').value.trim(),
+    coordinates:{lat:window._leCoords.lat,lng:window._leCoords.lng},
+    clientPhone:$('le-phone').value.trim(),
+    serviceNotes:$('le-notes').value.trim(),
+    defaultServiceDuration:parseInt($('le-dur').value)||30,
+    updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  var promise;
+  if(existingId){
+    promise = db.collection('locations').doc(existingId).update(data);
+  } else {
+    data.companyId=CC.id;
+    data.defaultJobType='maintenance';
+    data.tags=[];
+    data.active=true;
+    data.createdAt=firebase.firestore.FieldValue.serverTimestamp();
+    promise = db.collection('locations').add(data);
+  }
+
+  promise.then(function(ref){
+    toast(existingId?'Location updated!':'Location created!',true);
+    closeLocationEditor();
+    // locs array will auto-update via onSnapshot listener; refresh UI shortly after
+    setTimeout(function(){
+      var scroll=$('loc-list-scroll');
+      if(scroll) scroll.innerHTML=renderLocListItems();
+      renderAllMarkers();
+    }, 400);
+  }).catch(function(e){toast(e.message,false);});
+}
+
+function deleteLocationConfirm(id){
+  if(!confirm('Delete this location? This cannot be undone.'))return;
+  db.collection('locations').doc(id).update({active:false}).then(function(){
+    toast('Location deleted',true);
+    closeLocationEditor();
+    setTimeout(function(){
+      var scroll=$('loc-list-scroll');
+      if(scroll) scroll.innerHTML=renderLocListItems();
+      renderAllMarkers();
+    },400);
   }).catch(function(e){toast(e.message,false);});
 }
 
