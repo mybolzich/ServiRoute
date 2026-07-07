@@ -249,6 +249,9 @@ var dragI = null;
 
 // ── Helpers ──────────────────────────────────────────
 function $(id){ return document.getElementById(id); }
+// Fully removes a dynamically-created modal from the DOM (not just hides it) —
+// prevents duplicate-ID bugs where a stale hidden copy shadows getElementById lookups
+function closeModalEl(id){ var m=$(id); if(m) m.remove(); }
 function show(el){ el.style.display = 'block'; }
 function hide(el){ el.style.display = 'none'; }
 
@@ -1005,11 +1008,12 @@ function dragD(e,toI,routeId){
 var _optMethod='manual';
 
 function showNewRouteModal(){
+  closeModalEl('modal-nr'); // defensively remove any stale copy first
   var today=new Date().toISOString().slice(0,10);
   var crewOpts=crew.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+(c.code?' ('+c.code+')':'')+'</option>';}).join('');
 
-  var html='<div class="mo open" id="modal-nr" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
-    '<div class="md"><div class="md-h"><div class="md-t">Create Route</div><button class="btn btn-g" onclick="$(\'modal-nr\').classList.remove(\'open\')">✕</button></div>'+
+  var html='<div class="mo open" id="modal-nr" onclick="if(event.target===this)this.remove()">'+
+    '<div class="md"><div class="md-h"><div class="md-t">Create Route</div><button class="btn btn-g" onclick="closeModalEl(\'modal-nr\')">✕</button></div>'+
     '<div class="md-b">'+
     '<div class="row2"><div><label>Route Name</label><input type="text" id="nr-name" placeholder="Monday - North Zone"/></div>'+
     '<div><label>Date</label><input type="date" id="nr-date" value="'+today+'"/></div></div>'+
@@ -1022,7 +1026,7 @@ function showNewRouteModal(){
     '<div class="oc" onclick="pickOpt(this,\'smart_time\')" data-o="smart_time"><div class="oc-i">⏱</div><div class="oc-t">Fastest Time</div><div class="oc-d">Drive + service</div></div>'+
     '<div class="oc" onclick="pickOpt(this,\'smart_balanced\')" data-o="smart_balanced"><div class="oc-i">⚖️</div><div class="oc-t">Balanced</div><div class="oc-d">Equal per crew</div></div>'+
     '</div></div>'+
-    '<div class="md-f"><button class="btn btn-g" onclick="$(\'modal-nr\').classList.remove(\'open\')">Cancel</button>'+
+    '<div class="md-f"><button class="btn btn-g" onclick="closeModalEl(\'modal-nr\')">Cancel</button>'+
     '<button class="btn btn-p" onclick="createRoute()">Create Route</button></div></div></div>';
 
   document.body.insertAdjacentHTML('beforeend',html);
@@ -1059,11 +1063,12 @@ function createRoute(){
 var _addJobRoute=null;
 
 function showAddJobModal(routeId){
+  closeModalEl('modal-aj'); // defensively remove any stale copy first
   _addJobRoute=routeId;
   var locOpts=locs.map(function(l){return '<option value="'+l.id+'">'+esc(l.name)+(l.clientName?' — '+l.clientName:'')+'</option>';}).join('');
 
-  var html='<div class="mo open" id="modal-aj" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
-    '<div class="md"><div class="md-h"><div class="md-t">Add Stop</div><button class="btn btn-g" onclick="$(\'modal-aj\').classList.remove(\'open\')">✕</button></div>'+
+  var html='<div class="mo open" id="modal-aj" onclick="if(event.target===this)this.remove()">'+
+    '<div class="md"><div class="md-h"><div class="md-t">Add Stop</div><button class="btn btn-g" onclick="closeModalEl(\'modal-aj\')">✕</button></div>'+
     '<div class="md-b">'+
     '<label>Location</label><select id="aj-loc"><option value="">Select…</option>'+locOpts+'</select>'+
     '<div class="row2"><div><label>Type</label><select id="aj-type"><option value="maintenance">Maintenance</option><option value="service">Service</option><option value="inspection">Inspection</option><option value="install">Install</option><option value="other">Other</option></select></div>'+
@@ -1071,7 +1076,7 @@ function showAddJobModal(routeId){
     '<label>Description</label><textarea id="aj-desc" rows="2" style="resize:none;margin-bottom:16px" placeholder="Grass cut, trim hedges…"></textarea>'+
     '<div class="row2"><div><label>Priority</label><select id="aj-pri"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option><option value="low">Low</option></select></div>'+
     '<div><label>Time Window</label><input type="text" id="aj-tw" placeholder="08:00–17:00 (optional)"/></div></div>'+
-    '</div><div class="md-f"><button class="btn btn-g" onclick="$(\'modal-aj\').classList.remove(\'open\')">Cancel</button>'+
+    '</div><div class="md-f"><button class="btn btn-g" onclick="closeModalEl(\'modal-aj\')">Cancel</button>'+
     '<button class="btn btn-p" onclick="addJob()">Add Stop</button></div></div></div>';
 
   document.body.insertAdjacentHTML('beforeend',html);
@@ -1135,13 +1140,14 @@ function renderCrewTable(){
 }
 
 function showAddCrewModal(){
-  var html='<div class="mo open" id="modal-ac" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
-    '<div class="md"><div class="md-h"><div class="md-t">Add Crew</div><button class="btn btn-g" onclick="$(\'modal-ac\').classList.remove(\'open\')">✕</button></div>'+
+  closeModalEl('modal-ac'); // defensively remove any stale copy first
+  var html='<div class="mo open" id="modal-ac" onclick="if(event.target===this)this.remove()">'+
+    '<div class="md"><div class="md-h"><div class="md-t">Add Crew</div><button class="btn btn-g" onclick="closeModalEl(\'modal-ac\')">✕</button></div>'+
     '<div class="md-b">'+
     '<div class="row2"><div><label>Name</label><input type="text" id="ac-name"/></div><div><label>Code</label><input type="text" id="ac-code" placeholder="LM1"/></div></div>'+
     '<div class="row2"><div><label>Phone</label><input type="text" id="ac-phone"/></div><div><label>Vehicle Plate</label><input type="text" id="ac-plate"/></div></div>'+
     '<label>Color</label><input type="color" id="ac-color" value="#3d7eff" style="width:60px;height:40px;padding:2px;cursor:pointer;margin-bottom:16px"/>'+
-    '</div><div class="md-f"><button class="btn btn-g" onclick="$(\'modal-ac\').classList.remove(\'open\')">Cancel</button>'+
+    '</div><div class="md-f"><button class="btn btn-g" onclick="closeModalEl(\'modal-ac\')">Cancel</button>'+
     '<button class="btn btn-p" onclick="addCrew()">Add Crew</button></div></div></div>';
   document.body.insertAdjacentHTML('beforeend',html);
 }
@@ -1488,7 +1494,7 @@ var _csvRows = [];
 var _csvGeocodeQueue = [];
 
 function showImportCsvModal(){
-  var html='<div class="mo open" id="modal-csv" onclick="if(event.target===this)this.classList.remove(\'open\')">'+
+  var html='<div class="mo open" id="modal-csv" onclick="if(event.target===this)this.remove()">'+
     '<div class="md" style="max-width:680px">'+
     '<div class="md-h"><div class="md-t">Import Locations from CSV</div><button class="btn btn-g" onclick="closeCsvModal()">✕</button></div>'+
     '<div class="md-b">'+
