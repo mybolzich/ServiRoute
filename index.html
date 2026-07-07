@@ -341,14 +341,26 @@ $('btn-login').onclick = function(){
   if(!email||!pass){msg('Enter email and password.',true);return;}
   this.textContent='Signing in…';this.disabled=true;
   var self=this;
+  var timedOut=false;
+  var timeoutId=setTimeout(function(){
+    timedOut=true;
+    msg('Timed out. Domain may not be authorized. Firebase Console → Authentication → Settings → Authorized domains → add: '+window.location.hostname,true);
+    self.textContent='Sign In';self.disabled=false;
+  },15000);
   auth.signInWithEmailAndPassword(email,pass)
   .catch(function(e){
+    clearTimeout(timeoutId);
+    if(timedOut)return;
     var m=e.message;
     if(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password'||e.code==='auth/user-not-found') m='Incorrect email or password.';
     else if(e.code==='auth/too-many-requests') m='Too many attempts. Wait a few minutes.';
+    else if(e.code==='auth/unauthorized-domain') m='Domain not authorized. Firebase Console → Authentication → Settings → Authorized domains → add: '+window.location.hostname;
     msg(m,true);
   })
-  .finally(function(){self.textContent='Sign In';self.disabled=false;});
+  .finally(function(){
+    clearTimeout(timeoutId);
+    if(!timedOut){self.textContent='Sign In';self.disabled=false;}
+  });
 };
 
 // Enter key on login
@@ -368,6 +380,14 @@ $('btn-reg').onclick = function(){
 
   this.textContent='Creating…';this.disabled=true;
   var self=this;
+
+  // Safety timeout — if nothing resolves in 15s, show error instead of hanging
+  var timedOut=false;
+  var timeoutId=setTimeout(function(){
+    timedOut=true;
+    msg('Request timed out. This usually means your domain is not authorized in Firebase. Go to Firebase Console → Authentication → Settings → Authorized domains → add: '+window.location.hostname,true);
+    self.textContent='Create Company & Sign In';self.disabled=false;
+  },15000);
 
   // Try create user, or sign in if exists
   var p = auth.createUserWithEmailAndPassword(email,pass)
@@ -405,13 +425,19 @@ $('btn-reg').onclick = function(){
     });
   })
   .catch(function(e){
+    clearTimeout(timeoutId);
+    if(timedOut)return; // Already showed timeout message
     var m=e.message;
     if(e.code==='auth/invalid-email') m='Invalid email address.';
     else if(e.code==='auth/weak-password') m='Password needs 6+ characters.';
     else if(e.code==='auth/operation-not-allowed') m='Enable Email/Password in Firebase Console → Authentication → Sign-in method.';
+    else if(e.code==='auth/unauthorized-domain') m='This domain is not authorized. Go to Firebase Console → Authentication → Settings → Authorized domains → add: '+window.location.hostname;
     msg(m,true);
   })
-  .finally(function(){self.textContent='Create Company & Sign In';self.disabled=false;});
+  .finally(function(){
+    clearTimeout(timeoutId);
+    if(!timedOut){self.textContent='Create Company & Sign In';self.disabled=false;}
+  });
 };
 
 // Load profile — creates missing Firestore data if needed
