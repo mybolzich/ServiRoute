@@ -637,43 +637,257 @@ function loadDashboard(date){
 }
 
 // ── Routes ───────────────────────────────────────────
+var allDayJobs=[];   // all jobs across all routes for selected date
+var schedMap=null;
+var schedMarkers={};
+
 function renderRoutes(mc){
   var today=new Date().toISOString().slice(0,10);
-  mc.innerHTML='<div class="pg on">'+
-    '<div class="pg-h"><div><div class="pg-t">Routes</div><div class="pg-st">Plan, optimize, and dispatch</div></div>'+
-    '<div class="flex-g"><input type="date" id="rt-dt" value="'+today+'" style="margin-bottom:0;width:auto"/>'+
-    '<button class="btn btn-p" id="btn-new-route">+ New Route</button></div></div>'+
-    '<div class="row2" style="gap:24px"><div id="rt-list"><p style="color:var(--td)">Loading…</p></div>'+
-    '<div id="rt-detail"><div class="card"><div class="empty"><div class="empty-i">🗓</div><div class="empty-t">Select a route</div></div></div></div></div></div>';
+  mc.innerHTML=
+    '<div class="pg on" style="padding:0;margin:-28px;height:100vh;display:flex;flex-direction:column;overflow:hidden">'+
+
+    // Top bar
+    '<div style="padding:16px 24px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center;background:var(--s);flex-shrink:0">'+
+      '<div><div class="pg-t" style="font-size:18px">Scheduler</div><div class="pg-st">Plan, optimize, and dispatch</div></div>'+
+      '<div class="flex-g"><input type="date" id="rt-dt" value="'+today+'" style="margin-bottom:0;width:auto"/>'+
+      '<button class="btn btn-p" id="btn-new-route">+ New Route</button></div>'+
+    '</div>'+
+
+    // Body: sidebar + timeline/map
+    '<div style="flex:1;display:flex;overflow:hidden;position:relative">'+
+
+      // Sidebar: plan summary + route list
+      '<div style="width:300px;flex-shrink:0;background:var(--s);border-right:1px solid var(--b);display:flex;flex-direction:column;overflow-y:auto">'+
+        '<div id="rt-summary" style="padding:16px;border-bottom:1px solid var(--b)"></div>'+
+        '<div id="rt-list" style="padding:8px;flex:1"></div>'+
+      '</div>'+
+
+      // Right: timeline (top) + map (bottom)
+      '<div style="flex:1;display:flex;flex-direction:column;overflow:hidden">'+
+        '<div id="rt-timeline" style="height:240px;flex-shrink:0;background:var(--bg);border-bottom:1px solid var(--b);overflow:auto;position:relative"></div>'+
+        '<div id="rt-map" style="flex:1;background:#1a1d26"></div>'+
+      '</div>'+
+
+      // Slide-over editor panel (hidden by default)
+      '<div id="rt-detail" style="display:none;position:absolute;top:0;right:0;bottom:0;width:400px;background:var(--s);border-left:1px solid var(--b);z-index:30;overflow-y:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)"></div>'+
+
+    '</div>'+
+    '</div>';
 
   loadRouteList(today);
-  $('rt-dt').onchange=function(){selRoute=null;loadRouteList(this.value);};
+  $('rt-dt').onchange=function(){selRoute=null;closeRouteEditor();loadRouteList(this.value);};
   $('btn-new-route').onclick=function(){showNewRouteModal();};
 }
 
 function loadRouteList(date){
-  db.collection('routes').where('companyId','==',CC.id).where('routeDate','==',date).get()
-  .then(function(snap){
-    routes=snap.docs.map(function(d){var x=d.data();x.id=d.id;return x;});
-    var el=$('rt-list');
-    if(!el)return;
-    if(!routes.length){el.innerHTML='<div class="empty"><div class="empty-i">🗓</div><div class="empty-t">No routes for '+date+'</div><p style="color:var(--td)">Click + New Route above</p></div>';return;}
-    el.innerHTML=routes.map(function(r){
-      var c=crew.find(function(x){return x.id===r.crewId;});
-      var p=r.jobCount?Math.round((r.completedJobCount||0)/r.jobCount*100):0;
-      return '<div class="rc'+(selRoute===r.id?' sel':'')+'" onclick="selAndShow(\''+r.id+'\')">'+
-        '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div style="display:flex;align-items:center;gap:7px;font-weight:600"><span class="crew-dot" style="background:'+(c?c.color:'#7c8499')+'"></span>'+esc(r.routeName)+'</div>'+badge(r.status)+'</div>'+
-        '<div style="font-size:12px;color:var(--td)">'+(c?c.name:'Unassigned')+' · '+(r.optimizationMethod||'manual').replace('_',' ')+'</div>'+
-        '<div class="pbar"><div class="pfill" style="width:'+p+'%"></div></div>'+
-        '<div class="rmeta"><div>📍 <strong>'+(r.jobCount||0)+'</strong> stops</div><div>✅ <strong>'+(r.completedJobCount||0)+'</strong></div><div>⏱ <strong>'+fmtMins(r.totalEstimatedDuration)+'</strong></div></div></div>';
-    }).join('');
+  var el=$('rt-list');
+  var sumEl=$('rt-summary');
+  if(el) el.innerHTML='<p style="color:var(--td);padding:8px">Loading…</p>';
+
+  return Promise.all([
+    db.collection('routes').where('companyId','==',CC.id).where('routeDate','==',date).get(),
+    db.collection('jobs').where('companyId','==',CC.id).where('routeDate','==',date).get()
+  ]).then(function(results){
+    routes=results[0].docs.map(function(d){var x=d.data();x.id=d.id;return x;});
+    allDayJobs=results[1].docs.map(function(d){var x=d.data();x.id=d.id;return x;});
+
+    renderPlanSummary(date);
+    renderRouteSidebarList(date);
+    renderTimeline(date);
+    renderSchedulerMap(date);
+  }).catch(function(e){
+    if(el) el.innerHTML='<p style="color:var(--r);padding:8px">'+e.message+'</p>';
   });
+}
+
+function renderPlanSummary(date){
+  var sumEl=$('rt-summary');
+  if(!sumEl)return;
+  var totalOrders=allDayJobs.length;
+  var assigned=allDayJobs.filter(function(j){return j.routeId;}).length;
+  var completed=allDayJobs.filter(function(j){return j.status==='completed';}).length;
+  var dp=CC.dispatchLocation||{lat:0,lng:0};
+  var totalKm=0, totalDriveMin=0, totalSvcMin=0;
+  routes.forEach(function(r){
+    var jobs=allDayJobs.filter(function(j){return j.routeId===r.id;}).sort(function(a,b){return a.sequence-b.sequence;});
+    if(!jobs.length)return;
+    var stats=calcStats(dp,jobs);
+    totalKm += stats.distance;
+    totalDriveMin += stats.driveTime;
+    totalSvcMin += stats.serviceTime;
+  });
+
+  sumEl.innerHTML=
+    '<div class="sec-t" style="margin-bottom:10px">Plan Summary</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">'+
+      summaryCell('Routes', routes.length)+
+      summaryCell('Orders', totalOrders)+
+      summaryCell('Assigned', assigned)+
+      summaryCell('Completed', completed)+
+      summaryCell('Drive Time', fmtMins(Math.round(totalDriveMin)))+
+      summaryCell('Distance', totalKm.toFixed(1)+' mi')+
+    '</div>';
+}
+
+function summaryCell(label,val){
+  return '<div style="background:var(--bg);border-radius:8px;padding:8px 10px"><div style="color:var(--td);font-size:10px;text-transform:uppercase;letter-spacing:.4px">'+label+'</div><div style="font-family:var(--mono);font-size:15px;font-weight:500;margin-top:2px">'+val+'</div></div>';
+}
+
+function renderRouteSidebarList(date){
+  var el=$('rt-list');
+  if(!el)return;
+  if(!routes.length){el.innerHTML='<div class="empty" style="padding:30px 16px"><div class="empty-i">🗓</div><div class="empty-t">No routes</div><p style="color:var(--td);font-size:12px">Click + New Route above</p></div>';return;}
+
+  el.innerHTML=routes.map(function(r){
+    var c=crew.find(function(x){return x.id===r.crewId;});
+    var jobCount=allDayJobs.filter(function(j){return j.routeId===r.id;}).length;
+    var p=jobCount?Math.round((r.completedJobCount||0)/jobCount*100):0;
+    var sel=selRoute===r.id;
+    return '<div class="rc'+(sel?' sel':'')+'" style="margin-bottom:8px;padding:12px" onclick="selAndShow(\''+r.id+'\')">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+      '<div style="display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px"><span class="crew-dot" style="background:'+(c?c.color:'#7c8499')+'"></span>'+esc(r.routeName)+'</div>'+
+      badge(r.status)+'</div>'+
+      '<div style="font-size:11px;color:var(--td);margin-bottom:6px">'+(c?c.name:'Unassigned')+' · '+jobCount+' stops</div>'+
+      '<div class="pbar"><div class="pfill" style="width:'+p+'%"></div></div>'+
+    '</div>';
+  }).join('');
+}
+
+// ── Timeline (Gantt-style) ────────────────────────────
+var TL_START_HOUR=6, TL_END_HOUR=19; // 6am - 7pm window
+
+function computeStopTimes(dispatch, stops){
+  // Returns stops annotated with startMin/endMin (minutes from midnight), assumes crew departs at 7:00 AM
+  var cursor = 7*60; // 7:00 AM in minutes
+  var prev = dispatch;
+  var out=[];
+  stops.forEach(function(s){
+    var lat=s.coordinates?s.coordinates.lat:0, lng=s.coordinates?s.coordinates.lng:0;
+    var d = hav(prev.lat, prev.lng, lat, lng);
+    var driveMin = (d/30)*60;
+    cursor += driveMin;
+    var startMin = cursor;
+    var dur = s.estimatedDuration||30;
+    cursor += dur;
+    out.push(Object.assign({}, s, {startMin:startMin, endMin:cursor}));
+    prev = {lat:lat,lng:lng};
+  });
+  return out;
+}
+
+function renderTimeline(date){
+  var el=$('rt-timeline');
+  if(!el)return;
+  var dp=CC.dispatchLocation||{lat:0,lng:0};
+  var totalMin=(TL_END_HOUR-TL_START_HOUR)*60;
+
+  if(!routes.length){
+    el.innerHTML='<div class="empty" style="padding:40px"><div class="empty-i">📊</div><div class="empty-t">No routes scheduled</div></div>';
+    return;
+  }
+
+  // Hour ruler
+  var hours=[];
+  for(var h=TL_START_HOUR;h<=TL_END_HOUR;h++){
+    hours.push('<div style="position:absolute;left:'+((h-TL_START_HOUR)/  (TL_END_HOUR-TL_START_HOUR)*100)+'%;top:0;bottom:0;border-left:1px solid var(--b);font-size:10px;color:var(--tm);padding-left:4px;padding-top:4px">'+formatHour(h)+'</div>');
+  }
+
+  var rows = routes.map(function(r){
+    var c=crew.find(function(x){return x.id===r.crewId;});
+    var jobs=allDayJobs.filter(function(j){return j.routeId===r.id;}).sort(function(a,b){return a.sequence-b.sequence;});
+    var timed=computeStopTimes(dp,jobs);
+    var sel=selRoute===r.id;
+
+    var blocks=timed.map(function(j){
+      var left=Math.max(0,(j.startMin-TL_START_HOUR*60)/totalMin*100);
+      var width=Math.max(0.8,(j.endMin-j.startMin)/totalMin*100);
+      return '<div title="'+esc(j.locationName)+' ('+minToClock(j.startMin)+'-'+minToClock(j.endMin)+')" style="position:absolute;left:'+left+'%;width:'+width+'%;top:6px;bottom:6px;background:'+(c?c.color:'#7c8499')+';border-radius:4px;opacity:'+(j.status==='completed'?'1':'0.55')+';cursor:pointer" onclick="event.stopPropagation();selAndShow(\''+r.id+'\')"></div>';
+    }).join('');
+
+    return '<div class="tl-row" onclick="selAndShow(\''+r.id+'\')" style="position:relative;height:44px;border-bottom:1px solid var(--b);cursor:pointer;background:'+(sel?'var(--ad)':'transparent')+'">'+
+      '<div style="position:absolute;left:0;top:0;bottom:0;width:140px;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--s);border-right:1px solid var(--b);z-index:2;font-size:12px;font-weight:600"><span class="crew-dot" style="background:'+(c?c.color:'#7c8499')+'"></span>'+esc(c?c.name:'—')+'</div>'+
+      '<div style="position:absolute;left:140px;right:0;top:0;bottom:0">'+blocks+'</div>'+
+    '</div>';
+  }).join('');
+
+  el.innerHTML=
+    '<div style="position:sticky;top:0;height:22px;background:var(--s);border-bottom:1px solid var(--b);z-index:3">'+
+      '<div style="position:absolute;left:140px;right:0;top:0;bottom:0">'+hours.join('')+'</div>'+
+    '</div>'+
+    '<div style="position:relative;min-width:900px">'+rows+'</div>';
+}
+
+function formatHour(h){
+  var period=h>=12?'PM':'AM';
+  var hh=h%12; if(hh===0)hh=12;
+  return hh+period;
+}
+function minToClock(m){
+  var h=Math.floor(m/60), mm=Math.round(m%60);
+  var period=h>=12?'PM':'AM';
+  var hh=h%12; if(hh===0)hh=12;
+  return hh+':'+String(mm).padStart(2,'0')+period;
+}
+
+// ── Map ────────────────────────────────────────────────
+function renderSchedulerMap(date){
+  var mapEl=$('rt-map');
+  if(!mapEl)return;
+
+  if(schedMap){ schedMap.remove(); schedMap=null; schedMarkers={}; }
+
+  var center=(CC.dispatchLocation&&CC.dispatchLocation.lat)?[CC.dispatchLocation.lat,CC.dispatchLocation.lng]:[28.1518,-82.3743];
+  schedMap=L.map('rt-map',{zoomControl:true}).setView(center,11);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO', subdomains:'abcd', maxZoom:19
+  }).addTo(schedMap);
+
+  var bounds=[];
+  routes.forEach(function(r){
+    var c=crew.find(function(x){return x.id===r.crewId;});
+    var jobs=allDayJobs.filter(function(j){return j.routeId===r.id;}).sort(function(a,b){return a.sequence-b.sequence;});
+    jobs.forEach(function(j){
+      if(!j.coordinates || !j.coordinates.lat) return;
+      var color = c?c.color:'#7c8499';
+      var icon=L.divIcon({
+        className:'',
+        html:'<div style="width:22px;height:22px;border-radius:50%;background:'+color+';border:2px solid #fff;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4)">'+j.sequence+'</div>',
+        iconSize:[22,22], iconAnchor:[11,11]
+      });
+      var marker=L.marker([j.coordinates.lat,j.coordinates.lng],{icon:icon}).addTo(schedMap);
+      marker.bindTooltip(esc(j.locationName||''),{direction:'top',offset:[0,-10]});
+      marker.on('click',function(){selAndShow(r.id);});
+      bounds.push([j.coordinates.lat,j.coordinates.lng]);
+    });
+  });
+
+  if(bounds.length){ schedMap.fitBounds(bounds,{padding:[40,40]}); }
+}
+
+function panMapToRoute(routeId){
+  if(!schedMap)return;
+  var jobs=allDayJobs.filter(function(j){return j.routeId===routeId && j.coordinates && j.coordinates.lat;});
+  if(!jobs.length)return;
+  var bounds=jobs.map(function(j){return [j.coordinates.lat,j.coordinates.lng];});
+  schedMap.fitBounds(bounds,{padding:[60,60],maxZoom:15});
+}
+
+function closeRouteEditor(){
+  var el=$('rt-detail');
+  if(el){el.style.display='none';el.innerHTML='';}
+  selRoute=null;
+  renderRouteSidebarList($('rt-dt')?$('rt-dt').value:null);
+  renderTimeline();
 }
 
 function selAndShow(id){
   selRoute=id;
   var date=$('rt-dt')?$('rt-dt').value:new Date().toISOString().slice(0,10);
-  loadRouteList(date);
+  renderRouteSidebarList(date);
+  renderTimeline(date);
+  panMapToRoute(id);
+  var panel=$('rt-detail');
+  if(panel) panel.style.display='block';
   loadRouteDetail(id);
 }
 
@@ -692,7 +906,10 @@ function loadRouteDetail(id){
     var dp=CC.dispatchLocation||{lat:0,lng:0};
     var stats=selJobs.length?calcStats(dp,selJobs):{distance:0,driveTime:0,serviceTime:0,totalTime:0};
 
-    panel.innerHTML='<div class="card">'+
+    panel.innerHTML='<div style="padding:16px 20px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center">'+
+      '<div class="pg-t" style="font-size:15px">Manage Stops</div>'+
+      '<button class="btn btn-g" onclick="closeRouteEditor()">✕</button>'+
+      '</div><div class="card" style="border:none;border-radius:0;box-shadow:none;margin:0">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
       '<div><div style="font-size:15px;font-weight:700">'+esc(route.routeName)+'</div><div style="font-size:12px;color:var(--td)">'+(c?c.name:'—')+' · '+route.routeDate+'</div></div>'+
       '<div class="flex-g">'+badge(route.status)+
@@ -721,7 +938,7 @@ function loadRouteDetail(id){
             '<div style="flex:1"><div class="jn">'+esc(j.locationName||'Unknown')+'</div><div class="jd">'+esc(j.description||j.jobType||'')+'</div><div class="jm">~'+(j.estimatedDuration||30)+'min · '+(j.priority||'normal')+'</div></div>'+
             '<div class="flex-g">'+badge(j.status)+'<button class="btn btn-g" style="color:var(--r)" onclick="removeJob(\''+j.id+'\',\''+id+'\')">✕</button></div></div>';
         }).join(''))+
-      '</div>';
+      '</div></div>';
   }).catch(function(e){
     panel.innerHTML='<div class="card"><p style="color:var(--r)">Error: '+e.message+'</p></div>';
   });
@@ -834,8 +1051,7 @@ function createRoute(){
     var m=$('modal-nr');if(m)m.remove();
     toast('Route created!',true);
     if($('rt-dt'))$('rt-dt').value=date;
-    loadRouteList(date);
-    selAndShow(ref.id);
+    loadRouteList(date).then(function(){ selAndShow(ref.id); });
   }).catch(function(e){toast(e.message,false);});
 }
 
@@ -885,8 +1101,9 @@ function addJob(){
   }).then(function(){
     var m=$('modal-aj');if(m)m.remove();
     toast('Stop added!',true);
-    selAndShow(_addJobRoute);
-    var dt=$('rt-dt');if(dt)loadRouteList(dt.value);
+    var dt=$('rt-dt');
+    if(dt){ loadRouteList(dt.value).then(function(){ selAndShow(_addJobRoute); }); }
+    else { selAndShow(_addJobRoute); }
   }).catch(function(e){toast(e.message,false);});
 }
 
